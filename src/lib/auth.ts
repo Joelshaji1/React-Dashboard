@@ -64,6 +64,7 @@ export const authOptions: NextAuthOptions = {
     session: {
         strategy: "jwt",
     },
+    secret: process.env.NEXTAUTH_SECRET,
     debug: true,
     // @ts-expect-error - trustHost is valid in v4 but types might be outdated
     trustHost: true,
