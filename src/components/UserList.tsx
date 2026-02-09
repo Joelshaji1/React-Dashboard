@@ -17,23 +17,23 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
     const [users, setUsers] = useState(initialUsers);
     const [loadingId, setLoadingId] = useState<string | null>(null);
 
-    const handleApprove = async (userId: string) => {
+    const handleStatusUpdate = async (userId: string, isApproved: boolean) => {
         setLoadingId(userId);
         try {
             const res = await fetch("/api/admin/approve", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId }),
+                body: JSON.stringify({ userId, isApproved }),
             });
 
-            if (!res.ok) throw new Error("Failed to approve");
+            if (!res.ok) throw new Error("Failed to update status");
 
             setUsers(users.map(user =>
-                user.id === userId ? { ...user, isApproved: true } : user
+                user.id === userId ? { ...user, isApproved } : user
             ));
-            toast.success("User approved successfully");
+            toast.success(isApproved ? "User approved successfully" : "Approval revoked");
         } catch (error) {
-            toast.error("Failed to approve user");
+            toast.error("Failed to update user status");
         } finally {
             setLoadingId(null);
         }
@@ -56,8 +56,8 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                             <div className="text-white truncate" title={user.email}>{user.email}</div>
                             <div>
                                 <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${user.role === 'ADMIN'
-                                        ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                                        : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                    ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
                                     }`}>
                                     {user.role}
                                 </span>
@@ -76,14 +76,17 @@ export default function UserList({ initialUsers }: { initialUsers: User[] }) {
                                 )}
                             </div>
                             <div className="text-right">
-                                {!user.isApproved && (
+                                {user.role !== 'ADMIN' && (
                                     <Button
                                         size="sm"
-                                        onClick={() => handleApprove(user.id)}
+                                        onClick={() => handleStatusUpdate(user.id, !user.isApproved)}
                                         isLoading={loadingId === user.id}
-                                        className="bg-emerald-600 hover:bg-emerald-500 text-white h-8"
+                                        className={user.isApproved
+                                            ? "bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/50 h-8"
+                                            : "bg-emerald-600 hover:bg-emerald-500 text-white h-8"
+                                        }
                                     >
-                                        Approve
+                                        {user.isApproved ? "Revoke" : "Approve"}
                                     </Button>
                                 )}
                             </div>

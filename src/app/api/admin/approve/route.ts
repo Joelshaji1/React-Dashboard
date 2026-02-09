@@ -11,7 +11,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
         }
 
-        const { userId } = await req.json();
+        const { userId, isApproved } = await req.json();
 
         if (!userId) {
             return NextResponse.json({ message: "User ID required" }, { status: 400 });
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
         const updatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { isApproved: true },
+            data: { isApproved: !!isApproved },
         });
 
         return NextResponse.json(updatedUser);
