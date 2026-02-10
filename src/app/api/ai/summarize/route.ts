@@ -42,29 +42,18 @@ export async function POST(req: Request) {
                 const isVercel = process.env.VERCEL === '1';
 
                 if (isVercel) {
-                    // Production: Fetch from Python Serverless Function
-                    console.log("Environment: Vercel. Fetching from Python Serverless Function...");
+                    // Production: Fetch using Node.js library directly to avoid routing conflicts
+                    console.log("Environment: Vercel. Fetching transcript using YoutubeTranscript Node.js library...");
 
-                    // On Vercel, requests to /api/... should route correctly if relative?
-                    // Fetching relative URLs in server-side fetch often fails without base URL.
-                    // We can use VERCEL_URL.
-                    const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
-                    const endpoint = `${host}/python-get-transcript?videoId=${videoId}`;
-                    console.log("Fetching endpoint:", endpoint);
-
-                    const response = await fetch(endpoint);
-                    if (!response.ok) {
-                        const errText = await response.text();
-                        throw new Error(`Python Function failed: ${response.status} ${errText}`);
+                    try {
+                        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+                        const rawText = transcript.map(t => t.text).join(" ");
+                        truncatedText = rawText.substring(0, 25000);
+                        console.log("Successfully fetched transcript using Node.js. Length:", truncatedText.length);
+                    } catch (nodeError: any) {
+                        console.error("Node.js fetch failed on Vercel:", nodeError.message);
+                        throw new Error(`YouTube blocked the automatic request (IP block). This often happens on cloud providers like Vercel. Please use **Manual Mode** by clicking the 'Switch to Manual' button.`);
                     }
-
-                    const result = await response.json();
-                    if (result.error) throw new Error(result.error);
-                    if (!result.transcript) throw new Error("No transcript in response");
-
-                    const rawText = result.transcript;
-                    truncatedText = rawText.substring(0, 20000);
-
                 } else {
                     // Development: Use local Python script
                     console.log("Environment: Local/Node. Using local Python script...");
