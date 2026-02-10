@@ -1,7 +1,12 @@
 {
+    "functions": {
+        "python_api/transcript.py": {
+            "maxDuration": 30
+        }
+    },
     "rewrites": [
         {
-            "source": "/api/transcript",
+            "source": "/python-get-transcript",
             "destination": "/python_api/transcript.py"
         }
     ]

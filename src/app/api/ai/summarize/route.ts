@@ -49,7 +49,7 @@ export async function POST(req: Request) {
                     // Fetching relative URLs in server-side fetch often fails without base URL.
                     // We can use VERCEL_URL.
                     const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
-                    const endpoint = `${host}/api/transcript?videoId=${videoId}`;
+                    const endpoint = `${host}/python-get-transcript?videoId=${videoId}`;
                     console.log("Fetching endpoint:", endpoint);
 
                     const response = await fetch(endpoint);
