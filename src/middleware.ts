@@ -5,7 +5,7 @@ export default withAuth(
     function middleware(req) {
         const token = req.nextauth.token;
         const isAuth = !!token;
-        const isAuthPage = req.nextUrl.pathname.startsWith("/login") || req.nextUrl.pathname.startsWith("/signup");
+        const isAuthPage = req.nextUrl.pathname.startsWith("/login") || req.nextUrl.pathname.startsWith("/register");
 
         if (isAuthPage) {
             if (isAuth) {
@@ -15,22 +15,26 @@ export default withAuth(
         }
 
         if (!isAuth) {
-            return NextResponse.redirect(new URL("/login", req.url));
+            let from = req.nextUrl.pathname;
+            if (req.nextUrl.search) {
+                from += req.nextUrl.search;
+            }
+            return NextResponse.redirect(
+                new URL(`/login?from=${encodeURIComponent(from)}`, req.url)
+            );
         }
     },
     {
         callbacks: {
-            authorized: ({ token }) => !!token,
-        },
-        pages: {
-            signIn: "/login",
+            async authorized() {
+                // This is a work-around for handling redirect on auth pages.
+                // We return true here so the middleware function above is always called.
+                return true;
+            },
         },
     }
 );
 
 export const config = {
-    matcher: [
-        "/dashboard/:path*",
-        "/admin/:path*",
-    ],
+    matcher: ["/dashboard/:path*", "/admin/:path*", "/login", "/register", "/app/:path*"],
 };

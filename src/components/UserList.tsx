@@ -1,99 +1,105 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, Clock } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, X, Shield, User } from "lucide-react";
 
-interface User {
+type UserData = {
     id: string;
     email: string;
     role: string;
     isApproved: boolean;
-    createdAt: string;
-}
+    createdAt: Date;
+};
 
-export default function UserList({ initialUsers }: { initialUsers: User[] }) {
-    const [users, setUsers] = useState(initialUsers);
+export default function UserList({ users: initialUsers }: { users: any[] }) {
+    const router = useRouter();
+    const [users, setUsers] = useState<UserData[]>(initialUsers);
     const [loadingId, setLoadingId] = useState<string | null>(null);
 
-    const handleStatusUpdate = async (userId: string, isApproved: boolean) => {
+    const toggleApproval = async (userId: string, currentStatus: boolean) => {
         setLoadingId(userId);
         try {
             const res = await fetch("/api/admin/approve", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ userId, isApproved }),
+                body: JSON.stringify({ userId, approve: !currentStatus }),
             });
 
-            if (!res.ok) throw new Error("Failed to update status");
-
-            setUsers(users.map(user =>
-                user.id === userId ? { ...user, isApproved } : user
-            ));
-            toast.success(isApproved ? "User approved successfully" : "Approval revoked");
+            if (res.ok) {
+                setUsers(
+                    users.map((u) =>
+                        u.id === userId ? { ...u, isApproved: !currentStatus } : u
+                    )
+                );
+                router.refresh();
+            }
         } catch (error) {
-            toast.error("Failed to update user status");
+            console.error("Failed to update status");
         } finally {
             setLoadingId(null);
         }
     };
 
     return (
-        <div className="rounded-md border border-gray-800 bg-[#111827] overflow-hidden text-sm">
-            <div className="grid grid-cols-4 gap-4 p-4 font-medium text-gray-400 border-b border-gray-800 bg-[#1f2937]">
-                <div>Email</div>
-                <div>Role</div>
-                <div>Status</div>
-                <div className="text-right">Action</div>
-            </div>
-            <div className="divide-y divide-gray-800">
-                {users.length === 0 ? (
-                    <div className="p-8 text-center text-gray-500">No users found</div>
-                ) : (
-                    users.map((user) => (
-                        <div key={user.id} className="grid grid-cols-4 gap-4 p-4 items-center hover:bg-white/5 transition-colors">
-                            <div className="text-white truncate" title={user.email}>{user.email}</div>
-                            <div>
-                                <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${user.role === 'ADMIN'
-                                    ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                    }`}>
-                                    {user.role}
-                                </span>
-                            </div>
-                            <div>
-                                {user.isApproved ? (
-                                    <span className="inline-flex items-center text-emerald-400">
-                                        <CheckCircle className="w-4 h-4 mr-1.5" />
-                                        Approved
+        <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-gray-400">
+                <thead className="bg-gray-700/50 text-xs uppercase text-gray-300">
+                    <tr>
+                        <th className="px-6 py-4">User</th>
+                        <th className="px-6 py-4">Role</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                    {users.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-700/30 transition-colors">
+                            <td className="px-6 py-4 font-medium text-white">{user.email}</td>
+                            <td className="px-6 py-4 flex items-center gap-2">
+                                {user.role === "ADMIN" ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-900/30 px-2 py-1 text-xs font-semibold text-purple-400 border border-purple-800">
+                                        <Shield className="w-3 h-3" /> Admin
                                     </span>
                                 ) : (
-                                    <span className="inline-flex items-center text-amber-400">
-                                        <Clock className="w-4 h-4 mr-1.5" />
-                                        Pending
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-900/30 px-2 py-1 text-xs font-semibold text-blue-400 border border-blue-800">
+                                        <User className="w-3 h-3" /> User
                                     </span>
                                 )}
-                            </div>
-                            <div className="text-right">
-                                {user.role !== 'ADMIN' && (
-                                    <Button
-                                        size="sm"
-                                        onClick={() => handleStatusUpdate(user.id, !user.isApproved)}
-                                        isLoading={loadingId === user.id}
-                                        className={user.isApproved
-                                            ? "bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/50 h-8"
-                                            : "bg-emerald-600 hover:bg-emerald-500 text-white h-8"
-                                        }
-                                    >
-                                        {user.isApproved ? "Revoke" : "Approve"}
-                                    </Button>
+                            </td>
+                            <td className="px-6 py-4">
+                                {user.isApproved ? (
+                                    <span className="inline-flex items-center gap-1 text-green-400">
+                                        <Check className="w-4 h-4" /> Approved
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 text-yellow-400">
+                                        <X className="w-4 h-4" /> Pending
+                                    </span>
                                 )}
-                            </div>
-                        </div>
-                    ))
-                )}
-            </div>
+                            </td>
+                            <td className="px-6 py-4">
+                                {user.role !== "ADMIN" && (
+                                    <button
+                                        onClick={() => toggleApproval(user.id, user.isApproved)}
+                                        disabled={loadingId === user.id}
+                                        className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${user.isApproved
+                                                ? "bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800"
+                                                : "bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-800"
+                                            }`}
+                                    >
+                                        {loadingId === user.id
+                                            ? "Updating..."
+                                            : user.isApproved
+                                                ? "Revoke Access"
+                                                : "Approve Access"}
+                                    </button>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }
