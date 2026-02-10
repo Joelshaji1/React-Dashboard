@@ -38,34 +38,53 @@ export async function POST(req: Request) {
             console.log("Extracted Video ID:", videoId);
 
             try {
-                // Use Python script for reliable fetching
-                const projectRoot = process.cwd();
-                const scriptPath = path.join(projectRoot, "get_transcript.py");
+                // HYBRID APPROACH: Vercel vs Local
+                const isVercel = process.env.VERCEL === '1';
 
-                console.log("Running Python script:", `python "${scriptPath}" ${videoId}`);
+                if (isVercel) {
+                    // Production: Fetch from Python Serverless Function
+                    console.log("Environment: Vercel. Fetching from Python Serverless Function...");
 
-                // Execute Python script
-                const { stdout, stderr } = await execAsync(`python "${scriptPath}" ${videoId}`);
+                    // On Vercel, requests to /api/... should route correctly if relative?
+                    // Fetching relative URLs in server-side fetch often fails without base URL.
+                    // We can use VERCEL_URL.
+                    const host = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000";
+                    const endpoint = `${host}/api/transcript?videoId=${videoId}`;
+                    console.log("Fetching endpoint:", endpoint);
 
-                if (stderr) {
-                    // stderr doesn't always mean error in python, sometimes just logs
-                    console.log("Python script stderr:", stderr);
+                    const response = await fetch(endpoint);
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        throw new Error(`Python Function failed: ${response.status} ${errText}`);
+                    }
+
+                    const result = await response.json();
+                    if (result.error) throw new Error(result.error);
+                    if (!result.transcript) throw new Error("No transcript in response");
+
+                    const rawText = result.transcript;
+                    truncatedText = rawText.substring(0, 20000);
+
+                } else {
+                    // Development: Use local Python script
+                    console.log("Environment: Local/Node. Using local Python script...");
+                    const projectRoot = process.cwd();
+                    const scriptPath = path.join(projectRoot, "get_transcript.py");
+
+                    console.log("Running Python script:", `python "${scriptPath}" ${videoId}`);
+
+                    const { stdout, stderr } = await execAsync(`python "${scriptPath}" ${videoId}`);
+                    if (stderr) console.log("Python script stderr:", stderr);
+
+                    const result = JSON.parse(stdout.trim());
+
+                    if (result.error) throw new Error(result.error);
+                    if (!result.transcript) throw new Error("No transcript returned from Python script");
+
+                    const rawText = result.transcript;
+                    console.log("Transcript length:", rawText.length);
+                    truncatedText = rawText.substring(0, 20000);
                 }
-
-                // Parse standard output from Python script
-                const result = JSON.parse(stdout.trim());
-
-                if (result.error) {
-                    throw new Error(result.error);
-                }
-
-                if (!result.transcript) {
-                    throw new Error("No transcript returned from Python script");
-                }
-
-                const rawText = result.transcript;
-                console.log("Transcript length:", rawText.length);
-                truncatedText = rawText.substring(0, 20000);
 
             } catch (error: any) {
                 console.error("Transcript error details:", error);
@@ -74,7 +93,7 @@ export async function POST(req: Request) {
 
                 // If Python script failed, prompt manual mode
                 return NextResponse.json(
-                    { error: `Automatic fetch failed: ${errorMessage}. Please use Manual Mode.` },
+                    { error: `Automatic fetch failed (${process.env.VERCEL ? 'Cloud' : 'Local'}): ${errorMessage}. Please use Manual Mode.` },
                     { status: 500 }
                 );
             }
@@ -86,7 +105,7 @@ export async function POST(req: Request) {
             "meta-llama/llama-3.2-3b-instruct:free",
             "google/gemma-2-9b-it:free",
             "mistralai/mistral-7b-instruct:free",
-            "openrouter/auto", // Let OpenRouter decide? No, usually not free.
+            "openrouter/auto",
             "sophosympatheia/rogue-rose-103b-v0.2:free"
         ];
 
