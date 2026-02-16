@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const documents = await prisma.document.findMany({
+        const documents = await (prisma as any).document.findMany({
             where: { userId: session.user.id },
             orderBy: { createdAt: "desc" },
             select: {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import * as pdf from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 
 export async function POST(req: NextRequest) {
     try {
@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
         let content = "";
 
         if (file.type === "application/pdf") {
-            const data = await pdf(buffer);
+            const parser = new PDFParse({ data: buffer });
+            const data = await parser.getText();
             content = data.text;
         } else if (file.type === "text/plain") {
             content = buffer.toString("utf-8");
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Could not extract text from file." }, { status: 400 });
         }
 
-        const document = await prisma.document.create({
+        const document = await (prisma as any).document.create({
             data: {
                 name: file.name,
                 content: content,

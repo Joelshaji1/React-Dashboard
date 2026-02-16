@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Missing document ID or question" }, { status: 400 });
         }
 
-        const document = await prisma.document.findUnique({
+        const document = await (prisma as any).document.findUnique({
             where: { id: documentId },
         });
 
