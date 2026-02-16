@@ -5,6 +5,16 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+// Polyfill for DOMMatrix which is missing in some Node environments but expected by pdf-parse's dependencies
+if (typeof global.DOMMatrix === "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global as any).DOMMatrix = class DOMMatrix {
+        constructor() { }
+        static fromFloat32Array() { return new DOMMatrix(); }
+        static fromFloat64Array() { return new DOMMatrix(); }
+    };
+}
+
 export async function GET() {
     console.log("[v1-docs] GET - Initiated");
     try {
