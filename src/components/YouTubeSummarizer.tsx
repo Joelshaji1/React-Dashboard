@@ -44,7 +44,15 @@ export default function YouTubeSummarizer() {
 
                 if (typeof html !== "string") html = JSON.stringify(html);
 
-                if (html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":")) break;
+                // Content Guard: Ensure this is a real video page, not a "Sorry" page
+                const isRealPage = html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":");
+                const isBlockPage = html.includes("Service Unavailable") || html.includes("unusual traffic") || html.includes("action=\"https://www.google.com/sorry/index\"");
+
+                if (isRealPage && !isBlockPage) break;
+
+                // Discard invalid content and continue to next proxy
+                html = "";
+                lastError = `${proxy.name}: Returned a block page or invalid content.`;
             } catch (e: any) {
                 lastError = `${proxy.name}: ${e.message}`;
                 console.warn(`Proxy ${proxy.name} failed:`, e.message);
@@ -52,7 +60,9 @@ export default function YouTubeSummarizer() {
             }
         }
 
-        if (!html) throw new Error(`Bypass failed (${lastError || "All proxies blocked"}). Please use Manual Mode.`);
+        if (!html || html.length < 500) {
+            throw new Error(`Bypass failed: YouTube is temporarily blocking automated requests. Please try again in 5-10 minutes or use Manual Mode.`);
+        }
 
         try {
             setStatus("Extracting transcript...");
