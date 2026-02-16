@@ -109,34 +109,54 @@ export default function YouTubeSummarizer() {
             const tracks = captions.playerCaptionsTracklistRenderer.captionTracks;
             if (!tracks || tracks.length === 0) throw new Error("No caption tracks found (captions might be disabled by the creator).");
 
-            // Force srv1 (XML) format for consistent parsing
-            let baseUrl = tracks[0].baseUrl;
-            if (!baseUrl.includes("fmt=")) {
-                baseUrl += "&fmt=srv1";
-            }
+            const ultraMeshProxies = [
+                { name: "AllOrigins (Raw)", url: (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, type: "text" },
+                { name: "CorsProxy.io", url: (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`, type: "text" },
+                { name: "CodeTabs", url: (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, type: "text" },
+                { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}`, type: "text" },
+                { name: "AllOrigins (JSON)", url: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: "json" },
+                { name: "Direct", url: (u: string) => u, type: "text" }
+            ];
 
             let xml = "";
-            for (const proxy of proxies) {
-                try {
-                    const res = await fetch(proxy.url(baseUrl));
-                    let content = "";
-                    if (proxy.type === "json") {
-                        const data = await res.json();
-                        content = data.contents || data;
-                    } else {
-                        content = await res.text();
-                    }
+            const tryFormats = ["json3", "srv1", "srv2"];
 
-                    if (content && !isBlockResponse(content, true)) {
-                        if (content.includes("<text") || content.includes("<p ") || content.includes("events")) {
-                            xml = content;
-                            break;
+            for (const fmt of tryFormats) {
+                let currentUrl = tracks[0].baseUrl;
+                if (!currentUrl.includes("fmt=")) {
+                    currentUrl += `&fmt=${fmt}`;
+                } else {
+                    currentUrl = currentUrl.replace(/fmt=[^&]+/, `fmt=${fmt}`);
+                }
+
+                setStatus(`Attempting download (${fmt} format)...`);
+
+                for (const proxy of ultraMeshProxies) {
+                    try {
+                        const res = await fetch(proxy.url(currentUrl));
+                        let content = "";
+                        if (proxy.type === "json") {
+                            const data = await res.json();
+                            content = data.contents || data;
+                        } else {
+                            content = await res.text();
                         }
-                    }
-                } catch (e) { /* next */ }
+
+                        if (content && !isBlockResponse(content, true)) {
+                            // Check for common transcript signatures
+                            if (content.includes("<text") || content.includes("<p ") || content.includes("events") || content.includes("utf8")) {
+                                xml = content;
+                                break;
+                            }
+                        }
+                    } catch (e) { /* next proxy */ }
+                }
+                if (xml) break; // Success!
             }
 
-            if (!xml) throw new Error("YouTube blocked the bypass when downloading the transcript data. Please try again in 5 minutes or use Manual Mode.");
+            if (!xml) {
+                throw new Error("Maximum fallback reached. YouTube blocked all 18 bypass attempts for this transcript. Please try Manual Mode or wait 5 minutes.");
+            }
 
             setStatus("Extracting text content...");
             const xmlString = typeof xml === 'string' ? xml : JSON.stringify(xml);
