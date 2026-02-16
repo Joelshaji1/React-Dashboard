@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
+        const context = document.content.substring(0, 15000);
         const models = [
             "liquid/lfm-2.5-1.2b-thinking:free",
             "meta-llama/llama-3.2-3b-instruct:free",
