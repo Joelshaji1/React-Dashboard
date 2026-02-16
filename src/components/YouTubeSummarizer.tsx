@@ -80,12 +80,15 @@ export default function YouTubeSummarizer() {
             }
 
             const tracks = captions.playerCaptionsTracklistRenderer.captionTracks;
-            if (!tracks || tracks.length === 0) throw new Error("No caption tracks found.");
+            if (!tracks || tracks.length === 0) throw new Error("No caption tracks found (captions might be disabled by the creator).");
 
-            const baseUrl = tracks[0].baseUrl;
+            // Force srv1 (XML) format for consistent parsing
+            let baseUrl = tracks[0].baseUrl;
+            if (!baseUrl.includes("fmt=")) {
+                baseUrl += "&fmt=srv1";
+            }
+
             let xml = "";
-
-            // Try downloading XML using the same proxy sequence
             for (const proxy of proxies) {
                 try {
                     const res = await fetch(proxy.url(baseUrl));
@@ -95,43 +98,53 @@ export default function YouTubeSummarizer() {
                     } else {
                         xml = await res.text();
                     }
-                    if (xml && xml.includes("<text")) break;
+                    if (xml && (xml.includes("<text") || xml.includes("<p ") || xml.includes("events"))) break;
                 } catch (e) { /* next */ }
             }
 
-            if (!xml) throw new Error("Could not download transcript data.");
+            if (!xml) throw new Error("Could not download the transcript file.");
 
-            setStatus("Parsing transcript...");
+            setStatus("Parsing transcript data...");
             const parser = new DOMParser();
-
-            // Ensure we have a string to parse
             const xmlString = typeof xml === 'string' ? xml : JSON.stringify(xml);
-            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-            const textElements = xmlDoc.getElementsByTagName("text");
 
-            if (textElements.length === 0) {
-                // Check if it's JSON format instead (sometimes happens)
-                try {
-                    const jsonData = JSON.parse(xmlString);
-                    if (jsonData.events) {
-                        return jsonData.events
-                            .map((e: any) => e.segs ? e.segs.map((s: any) => s.utf8).join("") : "")
-                            .join(" ");
-                    }
-                } catch (e) { /* not json */ }
-                throw new Error("Bypass succeeded but the transcript data was empty. This usually happens if the video has restricted captions.");
+            // Try XML/SRV1 parsing
+            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+            const textElements = Array.from(xmlDoc.getElementsByTagName("text"));
+
+            if (textElements.length > 0) {
+                return textElements
+                    .map(el => (el.textContent || "").trim())
+                    .filter(t => t.length > 0)
+                    .join(" ")
+                    .replace(/&amp;/g, "&")
+                    .replace(/&lt;/g, "<")
+                    .replace(/&gt;/g, ">")
+                    .replace(/&#39;/g, "'")
+                    .replace(/&quot;/g, '"');
             }
 
-            return Array.from(textElements)
-                .map(el => {
-                    return (el.textContent || "")
-                        .replace(/&amp;/g, "&")
-                        .replace(/&lt;/g, "<")
-                        .replace(/&gt;/g, ">")
-                        .replace(/&#39;/g, "'")
-                        .replace(/&quot;/g, '"');
-                })
-                .join(" ");
+            // Fallback: Try SRV2 (TimedText) parsing
+            const pElements = Array.from(xmlDoc.getElementsByTagName("p"));
+            if (pElements.length > 0) {
+                return pElements
+                    .map(el => (el.textContent || "").trim())
+                    .filter(t => t.length > 0)
+                    .join(" ");
+            }
+
+            // Fallback: Try JSON3 parsing
+            try {
+                const jsonData = JSON.parse(xmlString);
+                if (jsonData.events) {
+                    return jsonData.events
+                        .filter((e: any) => e.segs)
+                        .map((e: any) => e.segs.map((s: any) => s.utf8).join(""))
+                        .join(" ");
+                }
+            } catch (e) { /* ignore */ }
+
+            throw new Error("The bypass reached YouTube, but no readable text was found in the transcript file. Please use Manual Mode.");
         } catch (e: any) {
             console.error("Extraction failed:", e);
             throw new Error(`Auto-fix failed: ${e.message}`);
