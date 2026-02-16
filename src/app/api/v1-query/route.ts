@@ -6,6 +6,17 @@ import OpenAI from "openai";
 
 export const dynamic = "force-dynamic";
 
+export async function OPTIONS() {
+    return new NextResponse(null, {
+        status: 204,
+        headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+    });
+}
+
 const openai = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
     baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
@@ -58,7 +69,7 @@ export async function POST(req: NextRequest) {
         });
     } catch (error) {
         const err = error as Error;
-        console.error("Query error:", err);
-        return NextResponse.json({ error: err.message || "Failed to query document" }, { status: 500 });
+        console.error("POST /api/v1-query error:", err);
+        return NextResponse.json({ error: err.message || "Query failed" }, { status: 500 });
     }
 }

@@ -11,10 +11,36 @@ export async function OPTIONS() {
         status: 204,
         headers: {
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
         },
     });
+}
+
+export async function GET() {
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const documents = await (prisma as any).document.findMany({
+            where: { userId: session.user.id },
+            orderBy: { createdAt: "desc" },
+            select: {
+                id: true,
+                name: true,
+                createdAt: true,
+            }
+        });
+
+        return NextResponse.json(documents);
+    } catch (error) {
+        const err = error as Error;
+        console.error("GET /api/v1-docs error:", err);
+        return NextResponse.json({ error: err.message || "Failed to fetch docs" }, { status: 500 });
+    }
 }
 
 export async function POST(req: NextRequest) {
@@ -41,11 +67,11 @@ export async function POST(req: NextRequest) {
         } else if (file.type === "text/plain") {
             content = buffer.toString("utf-8");
         } else {
-            return NextResponse.json({ error: "Unsupported file type. Please upload PDF or Text files." }, { status: 400 });
+            return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
         }
 
         if (!content || content.trim().length === 0) {
-            return NextResponse.json({ error: "Could not extract text from file." }, { status: 400 });
+            return NextResponse.json({ error: "Extraction failed" }, { status: 400 });
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,13 +84,13 @@ export async function POST(req: NextRequest) {
         });
 
         return NextResponse.json({
-            message: "File uploaded successfully",
+            message: "Success",
             documentId: document.id,
             name: document.name
         });
     } catch (error) {
         const err = error as Error;
-        console.error("Upload error:", err);
-        return NextResponse.json({ error: err.message || "Failed to process document" }, { status: 500 });
+        console.error("POST /api/v1-docs error:", err);
+        return NextResponse.json({ error: err.message || "Upload failed" }, { status: 500 });
     }
 }

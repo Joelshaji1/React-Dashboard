@@ -20,8 +20,9 @@ export default function DocumentQA() {
     const [querying, setQuerying] = useState(false);
 
     const fetchDocuments = useCallback(async () => {
+        const url = "/api/v1-docs";
         try {
-            const res = await fetch("/api/v1-docs-list");
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 setDocuments(data);
@@ -29,13 +30,14 @@ export default function DocumentQA() {
                     setSelectedDocId(data[0].id);
                 }
             } else {
-                toast.error(`Fetch failed: ${res.status} ${res.statusText}`);
+                toast.error(`Fetch failed on ${url}: ${res.status} ${res.statusText}`);
             }
-        } catch (error: any) {
-            console.error("Error fetching documents:", error);
-            toast.error(`Fetch error: ${error.message || "Network error"}`);
+        } catch (error) {
+            const err = error as Error;
+            console.error("Error fetching documents:", err);
+            toast.error(`Network error fetching ${url}: ${err.message}`);
         }
-    }, [selectedDocId]); // selectedDocId is a dependency because it's used in the logic to set it if not already set
+    }, [selectedDocId]);
 
     useEffect(() => {
         fetchDocuments();
@@ -44,15 +46,16 @@ export default function DocumentQA() {
     const handleUpload = async () => {
         if (!file) return;
         setUploading(true);
+        const url = "/api/v1-docs";
+
         const formData = new FormData();
         formData.append("file", file);
 
         try {
-            const res = await fetch("/api/v1-docs-upload", {
+            const res = await fetch(url, {
                 method: "POST",
                 body: formData,
             });
-
             if (res.ok) {
                 toast.success("Document uploaded successfully");
                 setFile(null);
@@ -63,12 +66,13 @@ export default function DocumentQA() {
                     const data = await res.json();
                     errorMessage = data.error || errorMessage;
                 } catch {
-                    errorMessage = `Server error: ${res.status} ${res.statusText}`;
+                    errorMessage = `Server error ${res.status}: ${res.statusText}`;
                 }
                 toast.error(errorMessage);
             }
-        } catch (error: any) {
-            toast.error(`Network error during upload: ${error.message}`);
+        } catch (error) {
+            const err = error as Error;
+            toast.error(`Network error on ${url}: ${err.message}`);
         } finally {
             setUploading(false);
         }
@@ -78,9 +82,10 @@ export default function DocumentQA() {
         if (!selectedDocId || !question.trim()) return;
         setQuerying(true);
         setAnswer("");
+        const url = "/api/v1-query";
 
         try {
-            const res = await fetch("/api/v1-docs-query", {
+            const res = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ documentId: selectedDocId, question }),
@@ -95,12 +100,13 @@ export default function DocumentQA() {
                     const data = await res.json();
                     errorMsg = data.error || errorMsg;
                 } catch {
-                    errorMsg = `Server error: ${res.status} ${res.statusText}`;
+                    errorMsg = `Server error ${res.status}: ${res.statusText}`;
                 }
                 toast.error(errorMsg);
             }
-        } catch (error: any) {
-            toast.error(`Network error during query: ${error.message}`);
+        } catch (error) {
+            const err = error as Error;
+            toast.error(`Network error on ${url}: ${err.message}`);
         } finally {
             setQuerying(false);
         }
