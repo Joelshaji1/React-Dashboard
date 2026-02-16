@@ -4,6 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import OpenAI from "openai";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const openai = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
     baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
@@ -61,9 +64,9 @@ export async function POST(req: NextRequest) {
             answer: response.choices[0].message.content
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-        console.error("Query error:", error);
-        return NextResponse.json({ error: error.message || "Failed to query document" }, { status: 500 });
+    } catch (error) {
+        const err = error as Error;
+        console.error("Query error:", err);
+        return NextResponse.json({ error: err.message || "Failed to query document" }, { status: 500 });
     }
 }

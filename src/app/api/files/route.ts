@@ -4,8 +4,23 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PDFParse } from "pdf-parse";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export async function OPTIONS() {
+    return new NextResponse(null, {
+        status: 204,
+        headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        },
+    });
+}
+
 export async function GET() {
     try {
+        console.log("GET /api/files - Fetching documents");
         const session = await getServerSession(authOptions);
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -24,17 +39,19 @@ export async function GET() {
 
         return NextResponse.json(documents);
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-        console.error("Fetch documents error:", error);
-        return NextResponse.json({ error: error.message || "Failed to fetch documents" }, { status: 500 });
+    } catch (error) {
+        const err = error as Error;
+        console.error("Fetch documents error:", err);
+        return NextResponse.json({ error: err.message || "Failed to fetch documents" }, { status: 500 });
     }
 }
 
 export async function POST(req: NextRequest) {
     try {
+        console.log("POST /api/files - Starting upload");
         const session = await getServerSession(authOptions);
         if (!session?.user) {
+            console.warn("POST /api/files - Unauthorized attempt");
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -47,6 +64,7 @@ export async function POST(req: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
         console.log(`Processing file: ${file.name}, type: ${file.type}, size: ${buffer.length}`);
+
         let content = "";
 
         if (file.type === "application/pdf") {
@@ -74,15 +92,17 @@ export async function POST(req: NextRequest) {
             },
         });
 
+        console.log(`Successfully created document: ${document.id}`);
+
         return NextResponse.json({
             message: "File uploaded and processed successfully",
             documentId: document.id,
             name: document.name
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-        console.error("Upload error:", error);
-        return NextResponse.json({ error: error.message || "Failed to process document" }, { status: 500 });
+    } catch (error) {
+        const err = error as Error;
+        console.error("Upload error:", err);
+        return NextResponse.json({ error: err.message || "Failed to process document" }, { status: 500 });
     }
 }
