@@ -75,8 +75,10 @@ export async function POST(req: NextRequest) {
         if (file.type === "application/pdf") {
             try {
                 console.log("[v1-docs] POST - Attempting dynamic PDF parse");
-                // Use dynamic import to prevent top-level route crash if module fails
-                const pdf = (await import("pdf-parse")).default;
+                // Use any cast to handle both CJS/ESM structures and bypass TS build errors
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const pdfModule: any = await import("pdf-parse");
+                const pdf = pdfModule.default || pdfModule;
                 const data = await pdf(buffer);
                 content = data.text;
                 console.log("[v1-docs] POST - PDF Extracted:", content.length);
