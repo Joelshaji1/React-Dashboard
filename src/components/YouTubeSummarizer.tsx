@@ -18,215 +18,111 @@ export default function YouTubeSummarizer() {
     const [error, setError] = useState("");
 
     const fetchTranscriptClient = async (videoId: string) => {
-        const proxies = [
-            { name: "AllOrigins", url: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: "json" },
-            { name: "CorsProxy.io", url: (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`, type: "text" },
-            { name: "CodeTabs", url: (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, type: "text" },
-            { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: "text" }
-        ];
-
         const isBlockResponse = (text: string, isTranscript = false) => {
             if (!text) return true;
-            // Watch pages are always > 100k, but transcripts can be very small (e.g. 100 bytes)
             if (!isTranscript && text.length < 5000) return true;
             if (isTranscript && text.length < 2) return true;
-
-            const terms = [
-                "Service Unavailable",
-                "unusual traffic",
-                "action=\"https://www.google.com/sorry/index\"",
-                "YouTube is currently unavailable",
-                "Robot Check",
-                "automated requests",
-                "temporary service disruption"
-            ];
+            const terms = ["Service Unavailable", "unusual traffic", "sorry/index", "Robot Check", "automated requests"];
             return terms.some(term => text.toLowerCase().includes(term.toLowerCase()));
         };
 
-        let html = "";
-        let lastError = "";
+        const gigaMeshProxies = [
+            { name: "Direct", url: (u: string) => u, type: "text" },
+            { name: "AllOrigins (Raw)", url: (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, type: "text" },
+            { name: "CorsProxy.io", url: (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`, type: "text" },
+            { name: "CodeTabs", url: (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, type: "text" },
+            { name: "Htmldriven", url: (u: string) => `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(u)}`, type: "text" },
+            { name: "FuckCORS", url: (u: string) => `https://api.fuckcors.com/proxy?url=${encodeURIComponent(u)}`, type: "text" },
+            { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}`, type: "text" }
+        ];
 
-        for (let i = 0; i < proxies.length; i++) {
-            const proxy = proxies[i];
+        // 1. Get Video Page to catch Track URLs
+        let html = "";
+        for (const proxy of gigaMeshProxies) {
             try {
                 setStatus(`Bypassing block (${proxy.name})...`);
-                const res = await fetch(proxy.url(`https://www.youtube.com/watch?v=${videoId}`));
-                if (!res.ok) throw new Error(`Status ${res.status}`);
-
-                if (proxy.type === "json") {
-                    const data = await res.json();
-                    html = data.contents || data;
-                } else {
-                    html = await res.text();
-                }
-
-                if (typeof html !== "string") html = JSON.stringify(html);
-
-                // Content Guard: Ensure this is a real video page, not a "Sorry" page
-                const isRealPage = html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":");
-
-                if (isRealPage && !isBlockResponse(html)) break;
-
-                // Discard invalid content and continue to next proxy
+                const res = await fetch(proxy.url(`https://www.youtube.com/watch?v=${videoId}`), { signal: AbortSignal.timeout(6000) });
+                html = await res.text();
+                if (html && !isBlockResponse(html) && (html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":"))) break;
                 html = "";
-                lastError = `${proxy.name}: Returned a block page or invalid content.`;
-            } catch (e: any) {
-                lastError = `${proxy.name}: ${e.message}`;
-                console.warn(`Proxy ${proxy.name} failed:`, e.message);
-                html = "";
-            }
+            } catch (e) { html = ""; }
         }
 
-        if (!html || html.length < 500) {
-            throw new Error(`Bypass failed: YouTube is temporarily blocking automated requests. Please try again in 5-10 minutes or use Manual Mode.`);
+        if (!html) throw new Error("YouTube is temporarily blocking requests. Use Manual Mode.");
+
+        // 2. Extract Tracks
+        let captions;
+        const playerResponseMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
+        if (playerResponseMatch) {
+            try { const captures = JSON.parse(playerResponseMatch[1]); captions = captures.captions; } catch (e) { /* ignore */ }
+        }
+        if (!captions) {
+            const captionsMatch = html.match(/"captions":(\{.*?\})/);
+            if (captionsMatch) captions = JSON.parse(captionsMatch[1]);
         }
 
-        try {
-            setStatus("Extracting transcript...");
-            const playerResponseMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
-            let captions;
+        if (!captions?.playerCaptionsTracklistRenderer?.captionTracks) {
+            throw new Error("No transcript tracks found for this video.");
+        }
 
-            if (playerResponseMatch) {
+        const tracks = captions.playerCaptionsTracklistRenderer.captionTracks;
+        let xmlData = "";
+        const tryFormats = ["json3", "srv1", "srv2"];
+
+        // 3. Ultra-Parallel Fetching
+        for (const track of tracks.slice(0, 2)) {
+            for (const fmt of tryFormats) {
+                if (xmlData) break;
+                let url = track.baseUrl + (track.baseUrl.includes("?") ? "&" : "?") + `fmt=${fmt}`;
+                setStatus(`Fetching ${track.languageCode || "transcript"} (${fmt})...`);
+
+                // Try Direct First
                 try {
-                    const playerResponse = JSON.parse(playerResponseMatch[1]);
-                    captions = playerResponse.captions;
-                } catch (e) {
-                    console.warn("Player response parse failed");
-                }
-            }
-
-            if (!captions) {
-                const captionsMatch = html.match(/"captions":(\{.*?\})/);
-                if (captionsMatch) {
-                    captions = JSON.parse(captionsMatch[1]);
-                }
-            }
-
-            if (!captions || !captions.playerCaptionsTracklistRenderer) {
-                throw new Error("This video doesn't have an available transcript.");
-            }
-
-            const tracks = captions.playerCaptionsTracklistRenderer.captionTracks;
-            if (!tracks || tracks.length === 0) throw new Error("No caption tracks found (captions might be disabled by the creator).");
-
-            const gigaMeshProxies = [
-                { name: "AllOrigins (Raw)", url: (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, type: "text" },
-                { name: "CorsProxy.io", url: (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`, type: "text" },
-                { name: "CodeTabs", url: (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, type: "text" },
-                { name: "Htmldriven", url: (u: string) => `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(u)}`, type: "text" },
-                { name: "FuckCORS", url: (u: string) => `https://api.fuckcors.com/proxy?url=${encodeURIComponent(u)}`, type: "text" },
-                { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}`, type: "text" },
-                { name: "Direct", url: (u: string) => u, type: "text" }
-            ];
-
-            let xml = "";
-            const tryFormats = ["json3", "srv1", "srv2"];
-            const availableTracks = tracks.slice(0, 3);
-
-            for (const track of availableTracks) {
-                for (const fmt of tryFormats) {
-                    if (xml) break;
-
-                    let currentUrl = track.baseUrl;
-                    if (!currentUrl.includes("fmt=")) {
-                        currentUrl += `&fmt=${fmt}`;
-                    } else {
-                        currentUrl = currentUrl.replace(/fmt=[^&]+/, `fmt=${fmt}`);
+                    const dRes = await fetch(url, { signal: AbortSignal.timeout(4000) });
+                    const dText = await dRes.text();
+                    if (dText && !isBlockResponse(dText, true) && (dText.includes("<text") || dText.includes("events") || dText.includes("<p "))) {
+                        xmlData = dText; break;
                     }
+                } catch (e) { /* ignore direct */ }
 
-                    setStatus(`Bypassing ${track.languageCode || "default"} (${fmt}) [Parallel Mode]...`);
+                if (xmlData) break;
 
-                    // Hyper-Parallel Racing: Fire all proxies at once for this format
-                    try {
-                        const results = await Promise.allSettled(gigaMeshProxies.map(async (proxy) => {
-                            const res = await fetch(proxy.url(currentUrl), { signal: AbortSignal.timeout(8000) });
-                            let content = "";
-                            if (proxy.type === "json") {
-                                const data = await res.json();
-                                content = data.contents || data;
-                            } else {
-                                content = await res.text();
-                            }
-
-                            if (content && !isBlockResponse(content, true)) {
-                                if (content.includes("<text") || content.includes("<p ") || content.includes("events") || content.includes("utf8")) {
-                                    return content;
-                                }
-                            }
-                            throw new Error("Invalid content");
-                        }));
-
-                        const success = results.find(r => r.status === "fulfilled" && r.value) as PromiseFulfilledResult<string> | undefined;
-                        if (success) {
-                            xml = success.value;
-                            break;
-                        }
-                    } catch (e) { /* next format */ }
-                }
-                if (xml) break;
+                // Fire Parallel Mesh
+                try {
+                    const results = await Promise.allSettled(gigaMeshProxies.slice(1).map(async (p) => {
+                        const r = await fetch(p.url(url), { signal: AbortSignal.timeout(8000) });
+                        const t = await r.text();
+                        if (t && !isBlockResponse(t, true) && (t.includes("<text") || t.includes("events") || t.includes("<p "))) return t;
+                        throw new Error("fail");
+                    }));
+                    const win = results.find(r => r.status === "fulfilled" && r.value) as any;
+                    if (win) { xmlData = win.value; break; }
+                } catch (e) { /* next fmt */ }
             }
-
-            if (!xml) {
-                throw new Error("Giga-Mesh exhausted. YouTube is strictly blocking this video across all 40+ bypass paths. Please use Manual Mode.");
-            }
-
-
-            setStatus("Extracting text content...");
-            const xmlString = typeof xml === 'string' ? xml : JSON.stringify(xml);
-
-            // 1. DOM Parser (Standard XML/SRV1/SRV2)
-            try {
-                const parser = new DOMParser();
-                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-
-                // Try <text> (SRV1)
-                const textNodes = Array.from(xmlDoc.getElementsByTagName("text"));
-                if (textNodes.length > 0) {
-                    return textNodes.map(n => n.textContent || "").join(" ").trim();
-                }
-
-                // Try <p> (SRV2/TimedText)
-                const pNodes = Array.from(xmlDoc.getElementsByTagName("p"));
-                if (pNodes.length > 0) {
-                    return pNodes.map(n => n.textContent || "").join(" ").trim();
-                }
-            } catch (e) {
-                console.warn("DOMParser failed, falling back to regex...");
-            }
-
-            // 2. JSON Parser (JSON3/Events)
-            try {
-                const jsonData = typeof xml === 'string' ? JSON.parse(xml) : xml;
-                if (jsonData.events) {
-                    const text = jsonData.events
-                        .filter((e: any) => e.segs)
-                        .map((e: any) => e.segs.map((s: any) => s.utf8).join(""))
-                        .join(" ")
-                        .trim();
-                    if (text) return text;
-                }
-            } catch (e) { /* not json */ }
-
-            // 3. Brute Force Regex (Catch-all for any tag-based format)
-            // This extracts any content between <tags> that doesn't look like code/metadata
-            const bruteForceMatch = xmlString.match(/>([^<]{2,})</g);
-            if (bruteForceMatch) {
-                const extracted = bruteForceMatch
-                    .map(m => m.substring(1, m.length - 1).trim())
-                    .filter(t => !t.includes("<?xml") && !t.startsWith("http") && t.length > 1)
-                    .join(" ");
-
-                if (extracted.length > 50) {
-                    console.log("Omni-Parse: Used brute-force regex successfully.");
-                    return extracted.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-                }
-            }
-
-            throw new Error("Bypass succeeded, but transcript content is unreadable. The video might be using a protected or unsupported caption format.");
-        } catch (e: any) {
-            console.error("Extraction failed:", e);
-            throw new Error(`Auto-fix failed: ${e.message}`);
+            if (xmlData) break;
         }
+
+        if (!xmlData) throw new Error("Giga-Mesh exhausted. Please try Manual Mode.");
+
+        // 4. Parse
+        const xmlString = typeof xmlData === 'string' ? xmlData : JSON.stringify(xmlData);
+        try {
+            const jsonData = JSON.parse(xmlString);
+            if (jsonData.events) return jsonData.events.filter((e: any) => e.segs).map((e: any) => e.segs.map((s: any) => s.utf8).join("")).join(" ").trim();
+        } catch (e) { /* not json */ }
+
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+        const textNodes = Array.from(xmlDoc.getElementsByTagName("text"));
+        if (textNodes.length > 0) return textNodes.map(n => n.textContent || "").join(" ").trim();
+
+        const pNodes = Array.from(xmlDoc.getElementsByTagName("p"));
+        if (pNodes.length > 0) return pNodes.map(n => n.textContent || "").join(" ").trim();
+
+        const brute = xmlString.match(/>([^<]{2,})</g);
+        if (brute) return brute.map(m => m.substring(1, m.length - 1).trim()).filter(t => t.length > 1 && !t.includes("<?xml")).join(" ").trim();
+
+        throw new Error("Extraction failed.");
     };
 
     const handleSummarize = async (e: React.FormEvent) => {

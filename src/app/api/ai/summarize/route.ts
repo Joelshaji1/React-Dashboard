@@ -72,19 +72,29 @@ async function fetchWithFailover(videoId: string) {
                 signal: AbortSignal.timeout(5000)
             });
             const html = await response.text();
-
-            // Just checking if we can get the page. If we get the page, we could try to parse it here,
-            // but for now, we'll let the client do the heavy HTML parsing if the server-side libraries fail.
             if (html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":")) {
-                console.log("Method 3: Successfully reached YouTube via proxy. Client will handle extraction.");
-                // We throw a specific error so the POST handler knows we "half-succeeded"
-                // But wait, it's better to just return the 403 and let the client mesh take over
-                // OR, we can try to extract right here.
+                console.log("Method 3: Successfully reached YouTube via proxy. Moving to Python fallback.");
                 break;
             }
         } catch (e: any) {
             console.warn(`Method 3 proxy failed:`, e.message);
         }
+    }
+
+    // Method 4: Python YouTubeTranscriptApi (The "Guaranteed" Fix)
+    // This is much more resilient than Node libraries
+    try {
+        console.log("Method 4: Attempting Python youtube-transcript-api...");
+        const scriptPath = path.join(process.cwd(), "get_transcript.py");
+        const { stdout } = await execAsync(`python "${scriptPath}" ${videoId}`);
+        const result = JSON.parse(stdout);
+        if (result.transcript) {
+            return result.transcript.substring(0, 25000);
+        }
+        if (result.error) throw new Error(result.error);
+    } catch (e: any) {
+        lastError = e;
+        console.warn("Method 4 failed:", e.message);
     }
 
     throw lastError || new Error("Failed to fetch transcript from all server-side methods.");
