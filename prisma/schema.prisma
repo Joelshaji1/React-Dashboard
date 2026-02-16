@@ -27,6 +27,13 @@ model Document {
   createdAt DateTime @default(now())
 }
 
+model TranscriptCache {
+  id        String   @id @default(cuid())
+  videoId   String   @unique
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+}
+
 enum Role {
   USER
   ADMIN

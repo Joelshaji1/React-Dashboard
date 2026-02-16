@@ -26,6 +26,19 @@ export default function YouTubeSummarizer() {
             return terms.some(term => text.toLowerCase().includes(term.toLowerCase()));
         };
 
+        const STEALTH_HEADERS = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,video/webm,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Ch-Ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1"
+        };
+
         const gigaMeshProxies = [
             { name: "Direct", url: (u: string) => u, type: "text" },
             { name: "AllOrigins (Raw)", url: (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, type: "text" },
@@ -41,14 +54,17 @@ export default function YouTubeSummarizer() {
         for (const proxy of gigaMeshProxies) {
             try {
                 setStatus(`Bypassing block (${proxy.name})...`);
-                const res = await fetch(proxy.url(`https://www.youtube.com/watch?v=${videoId}`), { signal: AbortSignal.timeout(6000) });
+                const res = await fetch(proxy.url(`https://www.youtube.com/watch?v=${videoId}`), {
+                    headers: STEALTH_HEADERS,
+                    signal: AbortSignal.timeout(6000)
+                });
                 html = await res.text();
                 if (html && !isBlockResponse(html) && (html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":"))) break;
                 html = "";
             } catch (e) { html = ""; }
         }
 
-        if (!html) throw new Error("YouTube is temporarily blocking requests. Use Manual Mode.");
+        if (!html) throw new Error("YouTube is strictly blocking this video. Use Manual Assist.");
 
         // 2. Extract Tracks
         let captions;
@@ -78,7 +94,7 @@ export default function YouTubeSummarizer() {
 
                 // Try Direct First
                 try {
-                    const dRes = await fetch(url, { signal: AbortSignal.timeout(4000) });
+                    const dRes = await fetch(url, { headers: STEALTH_HEADERS, signal: AbortSignal.timeout(4000) });
                     const dText = await dRes.text();
                     if (dText && !isBlockResponse(dText, true) && (dText.includes("<text") || dText.includes("events") || dText.includes("<p "))) {
                         xmlData = dText; break;
@@ -90,7 +106,7 @@ export default function YouTubeSummarizer() {
                 // Fire Parallel Mesh
                 try {
                     const results = await Promise.allSettled(gigaMeshProxies.slice(1).map(async (p) => {
-                        const r = await fetch(p.url(url), { signal: AbortSignal.timeout(8000) });
+                        const r = await fetch(p.url(url), { headers: STEALTH_HEADERS, signal: AbortSignal.timeout(8000) });
                         const t = await r.text();
                         if (t && !isBlockResponse(t, true) && (t.includes("<text") || t.includes("events") || t.includes("<p "))) return t;
                         throw new Error("fail");
@@ -102,7 +118,7 @@ export default function YouTubeSummarizer() {
             if (xmlData) break;
         }
 
-        if (!xmlData) throw new Error("Giga-Mesh exhausted. Please try Manual Mode.");
+        if (!xmlData) throw new Error("Giga-Mesh exhausted. Use Manual Assist.");
 
         // 4. Parse
         const xmlString = typeof xmlData === 'string' ? xmlData : JSON.stringify(xmlData);
@@ -252,17 +268,31 @@ export default function YouTubeSummarizer() {
                         <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
                         <div className="flex-1">
                             <p className="text-red-400 text-sm font-medium">{error}</p>
-                            {mode === "url" && (
-                                <p className="text-red-300/70 text-xs mt-2">
-                                    Tip: If the automated fetch fails, try switching to
-                                    <button
-                                        onClick={() => setMode("manual")}
-                                        className="text-blue-400 hover:underline mx-1 font-medium"
-                                    >
-                                        Manual Mode
-                                    </button>
-                                    and pasting the transcript directly.
-                                </p>
+
+                            {error.includes("Giga-Mesh exhausted") || error.includes("strictly blocking") ? (
+                                <div className="mt-3 p-3 bg-red-900/30 rounded-lg border border-red-700/50">
+                                    <p className="text-red-200 text-xs font-bold mb-2 flex items-center gap-1">
+                                        🛡️ MANUAL ASSIST (100% GUARANTEE)
+                                    </p>
+                                    <ol className="text-red-300/80 text-[11px] space-y-1 list-decimal ml-4">
+                                        <li>Open this video on YouTube in a new tab.</li>
+                                        <li>Open Console (F12 or Inspect) and paste: <code className="bg-black/50 px-1 rounded text-white">ytInitialPlayerResponse.captions.playerCaptionsTracklistRenderer.captionTracks[0].baseUrl</code></li>
+                                        <li>Copy the URL it gives you, open it, and paste that text into <strong>Manual Mode</strong>.</li>
+                                    </ol>
+                                </div>
+                            ) : (
+                                mode === "url" && (
+                                    <p className="text-red-300/70 text-xs mt-2">
+                                        Tip: If the automated fetch fails, try switching to
+                                        <button
+                                            onClick={() => setMode("manual")}
+                                            className="text-blue-400 hover:underline mx-1 font-medium"
+                                        >
+                                            Manual Mode
+                                        </button>
+                                        and pasting the transcript directly.
+                                    </p>
+                                )
                             )}
                         </div>
                     </div>

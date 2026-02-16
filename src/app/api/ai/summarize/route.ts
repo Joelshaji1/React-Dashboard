@@ -5,6 +5,8 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
 
+import { prisma } from "@/lib/prisma";
+
 const execAsync = promisify(exec);
 
 const openai = new OpenAI({
@@ -12,18 +14,35 @@ const openai = new OpenAI({
     baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
 });
 
-const BROWSER_HEADERS = {
+const STEALTH_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,video/webm,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Sec-Ch-Ua": '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"Windows"',
     "Sec-Fetch-Dest": "document",
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1"
+    "Upgrade-Insecure-Requests": "1",
+    "Referer": "https://www.youtube.com/watch?v=",
 };
 
 async function fetchWithFailover(videoId: string) {
+    // 0. Check Database Cache first
+    try {
+        const cached = await (prisma as any).transcriptCache.findUnique({
+            where: { videoId }
+        });
+        if (cached) {
+            console.log("CACHE HIT: Using stored transcript for", videoId);
+            return cached.content;
+        }
+    } catch (e) {
+        console.warn("Cache check failed:", e);
+    }
+
     let lastError: any = null;
 
     // Method 1: youtube-transcript (Standard) - FAST
@@ -68,7 +87,7 @@ async function fetchWithFailover(videoId: string) {
             console.log(`Method 3: Attempting proxy ${proxyBase}...`);
             const targetUrl = encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`);
             const response = await fetch(`${proxyBase}${targetUrl}`, {
-                headers: BROWSER_HEADERS,
+                headers: STEALTH_HEADERS,
                 signal: AbortSignal.timeout(5000)
             });
             const html = await response.text();
@@ -125,6 +144,15 @@ export async function POST(req: Request) {
             try {
                 truncatedText = await fetchWithFailover(videoId);
                 console.log("Successfully fetched transcript. Length:", truncatedText.length);
+
+                // Save to Database Cache (Async)
+                if (truncatedText && truncatedText.length > 100) {
+                    (prisma as any).transcriptCache.upsert({
+                        where: { videoId },
+                        update: { content: truncatedText },
+                        create: { videoId, content: truncatedText }
+                    }).catch((e: any) => console.warn("Cache background save failed:", e));
+                }
             } catch (error: any) {
                 console.error("Transcript failure on server:", error.message);
                 return NextResponse.json(
