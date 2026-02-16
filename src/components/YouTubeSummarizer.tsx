@@ -18,17 +18,35 @@ export default function YouTubeSummarizer() {
     const [error, setError] = useState("");
 
     const fetchTranscriptClient = async (videoId: string) => {
+        const proxies = [
+            (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+            (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+        ];
+
+        let html = "";
+        let lastError = "";
+
+        for (let i = 0; i < proxies.length; i++) {
+            try {
+                setStatus(`Bypassing server block (Method ${i + 1}/${proxies.length})...`);
+                const res = await fetch(proxies[i](`https://www.youtube.com/watch?v=${videoId}`));
+                if (!res.ok) throw new Error(`Proxy ${i + 1} failed`);
+
+                const data = await res.json();
+                html = data.contents || data; // Handle different proxy response formats
+                if (typeof html !== "string") html = JSON.stringify(html);
+
+                if (html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":")) break;
+            } catch (e: any) {
+                lastError = e.message;
+                console.warn(`Proxy ${i + 1} failed:`, e.message);
+            }
+        }
+
+        if (!html) throw new Error(`Bypass failed: ${lastError || "Could not connect to YouTube"}. Please use Manual Mode.`);
+
         try {
-            setStatus("Bypassing server block (Step 1/2)...");
-            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`);
-            if (!res.ok) throw new Error("CORS proxy rejected the request.");
-
-            const data = await res.json();
-            const html = data.contents;
-            if (!html) throw new Error("Empty response from proxy.");
-
-            setStatus("Bypassing server block (Step 2/2)...");
-
+            setStatus("Extracting transcript...");
             // Try extracting from ytInitialPlayerResponse
             const playerResponseMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
             let captions;
@@ -50,16 +68,24 @@ export default function YouTubeSummarizer() {
             }
 
             if (!captions || !captions.playerCaptionsTracklistRenderer) {
-                throw new Error("This video doesn't seem to have a transcript available.");
+                throw new Error("This video doesn't have an available transcript.");
             }
 
             const tracks = captions.playerCaptionsTracklistRenderer.captionTracks;
             if (!tracks || tracks.length === 0) throw new Error("No caption tracks found.");
 
             const baseUrl = tracks[0].baseUrl;
-            const transcriptRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(baseUrl)}`);
-            const transcriptData = await transcriptRes.json();
-            const xml = transcriptData.contents;
+            let xml = "";
+            for (const proxy of proxies) {
+                try {
+                    const res = await fetch(proxy(baseUrl));
+                    const data = await res.json();
+                    xml = data.contents || data;
+                    if (xml && xml.includes("<text")) break;
+                } catch (e) { /* next */ }
+            }
+
+            if (!xml) throw new Error("Could not download transcript data.");
 
             const textNodes = xml.match(/<text.*?>([\s\S]*?)<\/text>/g);
             if (!textNodes) throw new Error("Transcription data is empty.");
@@ -68,7 +94,7 @@ export default function YouTubeSummarizer() {
                 return node.replace(/<text.*?>/, "").replace(/<\/text>/, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
             }).join(" ");
         } catch (e: any) {
-            console.error("Client-side fetch failed:", e);
+            console.error("Extraction failed:", e);
             throw new Error(`Auto-fix failed: ${e.message}`);
         }
     };
