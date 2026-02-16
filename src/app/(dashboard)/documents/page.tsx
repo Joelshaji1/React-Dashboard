@@ -16,7 +16,7 @@ export default async function DocumentsPage() {
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
                         Document Q&A
-                        <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full border border-indigo-100">v1.2 - Diag</span>
+                        <span className="text-xs font-normal text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full border border-indigo-100">v1.3 - FinalDiag</span>
                     </h1>
                     <p className="text-slate-500 mt-2">
                         Upload your study materials (PDF/Text) and ask anything.
