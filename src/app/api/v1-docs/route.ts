@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    console.log("[v1-docs] POST - v1.13 Buffer Verify");
+    console.log("[v1-docs] POST - v1.14 Final Bridge");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,52 +48,64 @@ export async function POST(req: NextRequest) {
 
         if (file.type === "application/pdf") {
             try {
-                // --- BUFFER VERIFICATION v1.13 ---
-                const bufSize = buffer.length;
-                const header = buffer.subarray(0, 5).toString("utf-8"); // Should be %PDF-
-                console.log(`[v1-docs] POST - Buffer Check: Size=${bufSize}, Header=${header}`);
-
                 const { createRequire } = await import("module");
                 const require = createRequire(import.meta.url);
+
+                // Attempt to load the library in the most compatible way
                 const pdfModule = require("pdf-parse");
 
-                const findFunction = (obj: any, depth = 0): any => {
-                    if (depth > 3) return null;
-                    if (typeof obj === "function") return obj;
-                    if (obj && typeof obj === "object") {
-                        if (obj.default && typeof obj.default === "function") return obj.default;
-                        for (const k of Object.keys(obj)) {
-                            if (typeof obj[k] === "function") return obj[k];
-                        }
+                // --- UNIVERSAL BRIDGE ENGINE v1.14 ---
+                const findRealFunction = (mod: any): any => {
+                    if (typeof mod === "function") return mod;
+                    if (mod?.default && typeof mod.default === "function") return mod.default;
+                    // Some versions of the library export an object with the function as the only key
+                    const keys = Object.keys(mod || {});
+                    for (const k of keys) {
+                        if (typeof mod[k] === "function") return mod[k];
                     }
                     return null;
                 };
 
-                const pdfFn = findFunction(pdfModule);
-                if (!pdfFn) throw new Error("PDF Engine not found in module");
+                const pdfFn = findRealFunction(pdfModule);
+                if (!pdfFn) {
+                    const keys = Object.keys(pdfModule || {}).join(", ");
+                    throw new Error(`Critical: Module loaded as ${typeof pdfModule} with keys: [${keys}] but no function found.`);
+                }
 
-                const extract = async (fn: any, buf: Buffer) => {
-                    try { return await fn(buf); }
-                    catch (e: any) { return await (new fn(buf)); }
-                };
+                // Explicitly pass data to the function with error handling for constructor mismatches
+                let data: any;
+                try {
+                    data = await pdfFn(buffer);
+                } catch (e: any) {
+                    if (e.message.includes("constructor") || e.message.includes("new")) {
+                        console.log("[v1-docs] Retrying with constructor call");
+                        data = await (new pdfFn(buffer));
+                    } else {
+                        throw e;
+                    }
+                }
 
-                const data = await extract(pdfFn, buffer);
+                content = data?.text || "";
+                const pages = data?.numpages || 0;
 
-                const rawText = data?.text || "";
-                const numPages = data?.numpages || 0;
-
-                content = rawText;
+                // SPECIAL FALLBACK: If text is empty but pages > 0, we might need a different property
+                if ((!content || content.trim().length === 0) && pages > 0) {
+                    content = data?.text_original || data?.raw_text || "";
+                }
 
                 if (!content || content.trim().length === 0) {
-                    const isPdf = header.includes("%PDF-");
-                    throw new Error(`Extraction failed. Pages: ${numPages}, Buf: ${bufSize}, validSig: ${isPdf}. ${numPages === 0 && isPdf ? "File structure is valid but unreadable by current engine." : ""}`);
+                    const header = buffer.subarray(0, 5).toString("utf-8");
+                    const keys = Object.keys(data || {}).join(", ");
+                    throw new Error(`Engine stalled. Pages: ${pages}, Keys: [${keys}], Sig: ${header}. The PDF might be non-standard or image-only.`);
                 }
+
+                console.log("[v1-docs] PDF Success - v1.14");
             } catch (pError) {
-                console.error("[v1-docs] POST - PDF Crash:", pError);
+                console.error("[v1-docs] PDF Crash Detail:", pError);
                 return NextResponse.json({
-                    error: "PDF Extraction Failed",
+                    error: "PDF Stabilization Error",
                     details: (pError as Error).message,
-                    v: "1.13"
+                    v: "1.14"
                 }, { status: 500 });
             }
         } else {
