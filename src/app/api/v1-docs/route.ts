@@ -5,10 +5,14 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// Polyfill for DOMMatrix which is missing in some Node environments but expected by pdf-parse's dependencies
-if (typeof global.DOMMatrix === "undefined") {
+/** 
+ * Polyfill for DOMMatrix which is missing in some Node environments but expected by pdf-parse's dependencies.
+ * We attach to globalThis to ensure it's available in all contexts.
+ */
+if (typeof globalThis.DOMMatrix === "undefined") {
+    console.log("[v1-docs] Polyfilling DOMMatrix");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global as any).DOMMatrix = class DOMMatrix {
+    (globalThis as any).DOMMatrix = class DOMMatrix {
         constructor() { }
         static fromFloat32Array() { return new DOMMatrix(); }
         static fromFloat64Array() { return new DOMMatrix(); }
@@ -16,7 +20,6 @@ if (typeof global.DOMMatrix === "undefined") {
 }
 
 export async function GET() {
-    console.log("[v1-docs] GET - Initiated");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) {
@@ -27,24 +30,16 @@ export async function GET() {
         const documents = await (prisma as any).document.findMany({
             where: { userId: session.user.id },
             orderBy: { createdAt: "desc" },
-            select: {
-                id: true,
-                name: true,
-                createdAt: true,
-            }
+            select: { id: true, name: true, createdAt: true }
         });
         return NextResponse.json(documents);
     } catch (error) {
-        const err = error as Error;
-        return NextResponse.json({
-            error: "Fetch Error",
-            details: err.message
-        }, { status: 500 });
+        return NextResponse.json({ error: "Fetch failed", details: (error as Error).message }, { status: 500 });
     }
 }
 
 export async function POST(req: NextRequest) {
-    console.log("[v1-docs] POST - Initiated v1.9");
+    console.log("[v1-docs] POST - Initiated v1.10");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) {
@@ -53,7 +48,6 @@ export async function POST(req: NextRequest) {
 
         const formData = await req.formData();
         const file = formData.get("file") as File;
-
         if (!file) {
             return NextResponse.json({ error: "No file provided" }, { status: 400 });
         }
@@ -63,40 +57,37 @@ export async function POST(req: NextRequest) {
 
         if (file.type === "application/pdf") {
             try {
-                console.log("[v1-docs] POST - Loading pdf-parse via createRequire (v1.9)");
+                console.log("[v1-docs] POST - Resolution Bridge v1.10");
                 const { createRequire } = await import("module");
                 const require = createRequire(import.meta.url);
                 const pdfModule = require("pdf-parse");
 
-                let pdfFn: any = pdfModule;
+                // Logic to handle ESM, CJS, and Class Constructor wrappers
+                let pdfFn: any = pdfModule.default || pdfModule;
 
-                // Deep inspection for Vercel/Next.js bundling
-                if (typeof pdfFn !== "function") {
-                    console.warn("[v1-docs] POST - pdf-parse is not a function at top level");
-                    if (pdfFn.default && typeof pdfFn.default === "function") {
-                        pdfFn = pdfFn.default;
-                    } else {
-                        // Look for any function in the keys
-                        const keys = Object.keys(pdfFn);
-                        console.log("[v1-docs] POST - pdf-parse keys:", keys);
-                        const fnKey = keys.find(k => typeof (pdfFn as any)[k] === "function");
-                        if (fnKey) {
-                            pdfFn = (pdfFn as any)[fnKey];
-                        } else {
-                            const keysStr = keys.join(", ");
-                            throw new Error(`pdf-parse is not a function. Type: ${typeof pdfModule}, Keys: [${keysStr}]`);
+                const extractText = async (fn: any, buf: Buffer) => {
+                    try {
+                        // Attempt 1: Standard function call
+                        return await fn(buf);
+                    } catch (e: any) {
+                        // Attempt 2: If it's a class misidentified by the bundler
+                        if (e.message.includes("invocation without 'new'") || e.message.includes("constructor")) {
+                            console.warn("[v1-docs] POST - Retrying with 'new' for Class constructor");
+                            return await (new fn(buf));
                         }
+                        throw e;
                     }
-                }
+                };
 
-                const data = await pdfFn(buffer);
+                const data = await extractText(pdfFn, buffer);
                 content = data.text;
-                console.log("[v1-docs] POST - PDF Extracted:", content?.length || 0);
+                console.log("[v1-docs] POST - PDF Success, length:", content?.length || 0);
             } catch (pError) {
-                console.error("[v1-docs] POST - PDF Processing Crash:", pError);
+                console.error("[v1-docs] POST - PDF Processing Error:", pError);
                 return NextResponse.json({
                     error: "PDF Processing Failed",
-                    details: (pError as Error).message
+                    details: (pError as Error).message,
+                    v: "1.10"
                 }, { status: 500 });
             }
         } else if (file.type === "text/plain") {
@@ -123,10 +114,9 @@ export async function POST(req: NextRequest) {
             name: document.name
         });
     } catch (error) {
-        const err = error as Error;
         return NextResponse.json({
             error: "Global Upload Error",
-            details: err.message
+            details: (error as Error).message
         }, { status: 500 });
     }
 }
