@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    console.log("[v1-docs] POST - v1.12 Content Insight");
+    console.log("[v1-docs] POST - v1.13 Buffer Verify");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,6 +48,11 @@ export async function POST(req: NextRequest) {
 
         if (file.type === "application/pdf") {
             try {
+                // --- BUFFER VERIFICATION v1.13 ---
+                const bufSize = buffer.length;
+                const header = buffer.subarray(0, 5).toString("utf-8"); // Should be %PDF-
+                console.log(`[v1-docs] POST - Buffer Check: Size=${bufSize}, Header=${header}`);
+
                 const { createRequire } = await import("module");
                 const require = createRequire(import.meta.url);
                 const pdfModule = require("pdf-parse");
@@ -74,24 +79,21 @@ export async function POST(req: NextRequest) {
 
                 const data = await extract(pdfFn, buffer);
 
-                // --- CONTENT INSIGHT v1.12 ---
                 const rawText = data?.text || "";
-                const info = data?.info ? JSON.stringify(data.info) : "no-info";
                 const numPages = data?.numpages || 0;
-
-                console.log(`[v1-docs] POST - Extract Stats: Pages=${numPages}, Info=${info}, TextLen=${rawText.length}`);
 
                 content = rawText;
 
                 if (!content || content.trim().length === 0) {
-                    throw new Error(`Empty text extracted. Pages detected: ${numPages}. This might be an image-only PDF or a scan.`);
+                    const isPdf = header.includes("%PDF-");
+                    throw new Error(`Extraction failed. Pages: ${numPages}, Buf: ${bufSize}, validSig: ${isPdf}. ${numPages === 0 && isPdf ? "File structure is valid but unreadable by current engine." : ""}`);
                 }
             } catch (pError) {
                 console.error("[v1-docs] POST - PDF Crash:", pError);
                 return NextResponse.json({
                     error: "PDF Extraction Failed",
                     details: (pError as Error).message,
-                    v: "1.12"
+                    v: "1.13"
                 }, { status: 500 });
             }
         } else {
