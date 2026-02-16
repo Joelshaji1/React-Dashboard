@@ -55,11 +55,17 @@ export default function DocumentQA() {
                 setFile(null);
                 fetchDocuments();
             } else {
-                const data = await res.json();
-                toast.error(data.error || "Upload failed");
+                let errorMessage = "Upload failed";
+                try {
+                    const data = await res.json();
+                    errorMessage = data.error || errorMessage;
+                } catch (e) {
+                    errorMessage = `Server error: ${res.status} ${res.statusText}`;
+                }
+                toast.error(errorMessage);
             }
-        } catch (error) {
-            toast.error("An error occurred during upload");
+        } catch (error: any) {
+            toast.error(error.message || "An error occurred during upload");
         } finally {
             setUploading(false);
         }
@@ -137,8 +143,8 @@ export default function DocumentQA() {
                                     key={doc.id}
                                     onClick={() => setSelectedDocId(doc.id)}
                                     className={`p-3 rounded-lg cursor-pointer border transition ${selectedDocId === doc.id
-                                            ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                            : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
+                                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                        : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
                                         }`}
                                 >
                                     <p className="text-sm font-medium truncate">{doc.name}</p>
