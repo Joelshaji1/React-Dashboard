@@ -32,6 +32,12 @@ export default async function DashboardLayout({
                         >
                             Dashboard
                         </Link>
+                        <Link
+                            href="/documents"
+                            className="flex items-center px-4 py-3 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                            Document Q&A
+                        </Link>
                         {session.user.role === "ADMIN" && (
                             <Link
                                 href="/admin"
