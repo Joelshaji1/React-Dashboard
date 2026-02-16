@@ -8,14 +8,14 @@ export default async function proxy(req: NextRequest) {
 
     // Safety check: Never intercept API calls in the proxy layer
     if (req.nextUrl.pathname.startsWith("/api")) {
-        return null;
+        return NextResponse.next();
     }
 
     if (isAuthPage) {
         if (isAuth) {
             return NextResponse.redirect(new URL("/dashboard", req.url));
         }
-        return null;
+        return NextResponse.next();
     }
 
     if (!isAuth) {
@@ -28,7 +28,7 @@ export default async function proxy(req: NextRequest) {
         );
     }
 
-    return null;
+    return NextResponse.next();
 }
 
 export const config = {
