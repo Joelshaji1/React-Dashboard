@@ -19,35 +19,43 @@ export default function YouTubeSummarizer() {
 
     const fetchTranscriptClient = async (videoId: string) => {
         const proxies = [
-            (url: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-            (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+            { name: "AllOrigins", url: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: "json" },
+            { name: "CorsProxy.io", url: (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`, type: "text" },
+            { name: "CodeTabs", url: (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, type: "text" },
+            { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: "text" }
         ];
 
         let html = "";
         let lastError = "";
 
         for (let i = 0; i < proxies.length; i++) {
+            const proxy = proxies[i];
             try {
-                setStatus(`Bypassing server block (Method ${i + 1}/${proxies.length})...`);
-                const res = await fetch(proxies[i](`https://www.youtube.com/watch?v=${videoId}`));
-                if (!res.ok) throw new Error(`Proxy ${i + 1} failed`);
+                setStatus(`Bypassing block (${proxy.name})...`);
+                const res = await fetch(proxy.url(`https://www.youtube.com/watch?v=${videoId}`));
+                if (!res.ok) throw new Error(`Status ${res.status}`);
 
-                const data = await res.json();
-                html = data.contents || data; // Handle different proxy response formats
+                if (proxy.type === "json") {
+                    const data = await res.json();
+                    html = data.contents || data;
+                } else {
+                    html = await res.text();
+                }
+
                 if (typeof html !== "string") html = JSON.stringify(html);
 
                 if (html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":")) break;
             } catch (e: any) {
-                lastError = e.message;
-                console.warn(`Proxy ${i + 1} failed:`, e.message);
+                lastError = `${proxy.name}: ${e.message}`;
+                console.warn(`Proxy ${proxy.name} failed:`, e.message);
+                html = "";
             }
         }
 
-        if (!html) throw new Error(`Bypass failed: ${lastError || "Could not connect to YouTube"}. Please use Manual Mode.`);
+        if (!html) throw new Error(`Bypass failed (${lastError || "All proxies blocked"}). Please use Manual Mode.`);
 
         try {
             setStatus("Extracting transcript...");
-            // Try extracting from ytInitialPlayerResponse
             const playerResponseMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
             let captions;
 
@@ -76,11 +84,17 @@ export default function YouTubeSummarizer() {
 
             const baseUrl = tracks[0].baseUrl;
             let xml = "";
+
+            // Try downloading XML using the same proxy sequence
             for (const proxy of proxies) {
                 try {
-                    const res = await fetch(proxy(baseUrl));
-                    const data = await res.json();
-                    xml = data.contents || data;
+                    const res = await fetch(proxy.url(baseUrl));
+                    if (proxy.type === "json") {
+                        const data = await res.json();
+                        xml = data.contents || data;
+                    } else {
+                        xml = await res.text();
+                    }
                     if (xml && xml.includes("<text")) break;
                 } catch (e) { /* next */ }
             }
