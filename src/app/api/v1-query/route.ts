@@ -49,24 +49,44 @@ export async function POST(req: NextRequest) {
         }
 
         const context = document.content.substring(0, 15000);
+        const models = [
+            "google/gemma-2-9b-it:free",
+            "mistralai/mistral-7b-instruct:free",
+            "meta-llama/llama-3.2-3b-instruct:free",
+            "deepseek/deepseek-r1:free"
+        ];
 
-        const response = await openai.chat.completions.create({
-            model: "mistralai/mistral-7b-instruct:free",
-            messages: [
-                {
-                    role: "system",
-                    content: "Answer the question based ONLY on the provided document. If unsure, say you don't know."
-                },
-                {
-                    role: "user",
-                    content: `Document:\n${context}\n\nQuestion: ${question}`
+        let lastError = null;
+        for (const model of models) {
+            try {
+                const response = await openai.chat.completions.create({
+                    model: model,
+                    messages: [
+                        {
+                            role: "system",
+                            content: "Answer the question based ONLY on the provided document. If unsure, say you don't know."
+                        },
+                        {
+                            role: "user",
+                            content: `Document:\n${context}\n\nQuestion: ${question}`
+                        }
+                    ],
+                });
+
+                if (response.choices?.[0]?.message?.content) {
+                    return NextResponse.json({
+                        answer: response.choices[0].message.content,
+                        model_used: model
+                    });
                 }
-            ],
-        });
+            } catch (e) {
+                lastError = e;
+                console.warn(`Model ${model} failed, trying next...`, (e as Error).message);
+                continue;
+            }
+        }
 
-        return NextResponse.json({
-            answer: response.choices[0].message.content
-        });
+        throw lastError || new Error("All models failed to respond");
     } catch (error) {
         const err = error as Error;
         console.error("POST /api/v1-query error:", err);
