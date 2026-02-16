@@ -45,7 +45,7 @@ export async function GET() {
                     createdAt: true,
                 }
             });
-            console.log("[v1-docs] GET - Prism Success:", documents.length);
+            console.log("[v1-docs] GET - Prisma Success:", documents.length);
             return NextResponse.json(documents);
         } catch (dbErr) {
             console.error("[v1-docs] GET - Prisma Database Error:", dbErr);
@@ -84,16 +84,29 @@ export async function POST(req: NextRequest) {
 
         if (file.type === "application/pdf") {
             try {
-                console.log("[v1-docs] POST - Attempting dynamic PDF parse");
-                // Use any cast to handle both CJS/ESM structures and bypass TS build errors
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const pdfModule: any = await import("pdf-parse");
-                const pdf = pdfModule.default || pdfModule;
-                const data = await pdf(buffer);
-                content = data.text;
-                console.log("[v1-docs] POST - PDF Extracted:", content.length);
+                console.log("[v1-docs] POST - Loading pdf-parse via createRequire (v1.8)");
+                const { createRequire } = await import("module");
+                const require = createRequire(import.meta.url);
+                const pdf = require("pdf-parse");
+
+                // Ensure pdf is actually a function before calling it
+                if (typeof pdf !== "function") {
+                    console.error("[v1-docs] POST - pdf-parse is not a function:", typeof pdf);
+                    // Fallback to .default if require() returns an object
+                    const pdfFn = (pdf as any).default || pdf;
+                    if (typeof pdfFn !== "function") {
+                        throw new Error("pdf-parse module resolved to a non-function");
+                    }
+                    const data = await pdfFn(buffer);
+                    content = data.text;
+                } else {
+                    const data = await pdf(buffer);
+                    content = data.text;
+                }
+
+                console.log("[v1-docs] POST - PDF Extracted:", content?.length || 0);
             } catch (pError) {
-                console.error("[v1-docs] POST - PDF Library Error:", pError);
+                console.error("[v1-docs] POST - PDF Processing Crash:", pError);
                 return NextResponse.json({
                     error: "PDF Processing Failed",
                     details: (pError as Error).message
