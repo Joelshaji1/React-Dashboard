@@ -16,6 +16,39 @@ export default function YouTubeSummarizer() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
+    const fetchTranscriptClient = async (videoId: string) => {
+        try {
+            // We use a simple fetch to a reliable third-party mirror or direct fetch if possible
+            // Since direct fetch to YouTube is CORS-blocked, we try a proxy or a known open endpoint
+            // For this specific fix, we'll try to fetch from a public mirror if the server fails
+            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`);
+            const data = await res.json();
+            const html = data.contents;
+
+            // Basic extraction logic from the HTML page (captions JSON)
+            const captionsMatch = html.match(/"captions":(\{.*?\})/);
+            if (!captionsMatch) throw new Error("No captions found in video metadata");
+
+            const captions = JSON.parse(captionsMatch[1]);
+            const baseUrl = captions.playerCaptionsTracklistRenderer.captionTracks[0].baseUrl;
+
+            const transcriptRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(baseUrl)}`);
+            const transcriptData = await transcriptRes.json();
+            const xml = transcriptData.contents;
+
+            // Parse XML text content
+            const textNodes = xml.match(/<text.*?>([\s\S]*?)<\/text>/g);
+            if (!textNodes) throw new Error("Could not parse transcript XML");
+
+            return textNodes.map((node: string) => {
+                return node.replace(/<text.*?>/, "").replace(/<\/text>/, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+            }).join(" ");
+        } catch (e) {
+            console.error("Client-side fetch failed:", e);
+            throw new Error("Could not fetch transcript even from browser. Please use Manual Mode.");
+        }
+    };
+
     const handleSummarize = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -23,25 +56,39 @@ export default function YouTubeSummarizer() {
         setSummary("");
 
         try {
-            const res = await fetch("/api/ai/summarize", {
+            let res = await fetch("/api/ai/summarize", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     url: mode === "url" ? url : undefined,
                     text: mode === "manual" ? manualText : undefined
                 }),
             });
 
-            const data = await res.json();
+            let data = await res.json();
+
+            // Check for IP Block and attempt Client-Side Failover
+            if (res.status === 403 && data.isIPBlock && mode === "url") {
+                console.log("Server IP Block detected. Attempting client-side extraction...");
+                try {
+                    const clientTranscript = await fetchTranscriptClient(data.videoId);
+                    // Retry with the transcript text we just fetched
+                    res = await fetch("/api/ai/summarize", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: clientTranscript }),
+                    });
+                    data = await res.json();
+                } catch (clientErr: any) {
+                    throw new Error(clientErr.message || "Bypass failed.");
+                }
+            }
 
             if (!res.ok) {
                 throw new Error(data.error || "Failed to summarize video");
             }
 
             setSummary(data.summary);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (err: any) {
             console.error(err);
             setError(err.message);

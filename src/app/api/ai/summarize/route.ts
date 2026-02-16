@@ -12,6 +12,69 @@ const openai = new OpenAI({
     baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
 });
 
+const BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1"
+};
+
+async function fetchWithFailover(videoId: string) {
+    let lastError: any = null;
+
+    // Method 1: youtube-transcript (Standard)
+    try {
+        console.log("Method 1: Attempting youtube-transcript...");
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+        return transcript.map(t => t.text).join(" ").substring(0, 25000);
+    } catch (e: any) {
+        lastError = e;
+        console.warn("Method 1 failed:", e.message);
+    }
+
+    // Method 2: YouTubei.js (InnerTube - Mobile App Emulation)
+    try {
+        console.log("Method 2: Attempting YouTubei.js (InnerTube)...");
+        const { Innertube } = await import("youtubei.js");
+        const youtube = await Innertube.create();
+        const info = await youtube.getInfo(videoId);
+        const transcriptData = await info.getTranscript();
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const segments = (transcriptData as any).transcript.content.body.initial_segments;
+        if (segments) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const text = segments.map((s: any) => s.snippet.text).join(" ");
+            return text.substring(0, 25000);
+        }
+    } catch (e: any) {
+        lastError = e;
+        console.warn("Method 2 failed:", e.message);
+    }
+
+    // Method 3: Manual Fetch with Browser Headers (Last Resort Server-Side)
+    try {
+        console.log("Method 3: Attempting raw fetch with browser headers...");
+        const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+            headers: BROWSER_HEADERS
+        });
+        const html = await response.text();
+        // This is a very basic fallback, extraction from HTML is complex but we catch the potential block here
+        if (html.includes("consent.youtube.com") || html.includes("Service Unavailable")) {
+            throw new Error("YouTube blocked the server IP (IP block detected).");
+        }
+    } catch (e: any) {
+        lastError = e;
+        console.warn("Method 3 failed:", e.message);
+    }
+
+    throw lastError || new Error("Failed to fetch transcript from all server-side methods.");
+}
+
 export async function POST(req: Request) {
     try {
         const { url, text } = await req.json();
@@ -27,7 +90,6 @@ export async function POST(req: Request) {
             console.log("Using manual transcript text. Length:", text.length);
             truncatedText = text.substring(0, 25000);
         } else {
-            // Robust Video ID Extraction
             const videoIdMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
             const videoId = videoIdMatch ? videoIdMatch[1] : null;
 
@@ -35,57 +97,18 @@ export async function POST(req: Request) {
                 return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
             }
 
-            console.log("Extracted Video ID:", videoId);
-
             try {
-                // HYBRID APPROACH: Vercel vs Local
-                const isVercel = process.env.VERCEL === '1';
-
-                if (isVercel) {
-                    // Production: Fetch using Node.js library directly to avoid routing conflicts
-                    console.log("Environment: Vercel. Fetching transcript using YoutubeTranscript Node.js library...");
-
-                    try {
-                        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-                        const rawText = transcript.map(t => t.text).join(" ");
-                        truncatedText = rawText.substring(0, 25000);
-                        console.log("Successfully fetched transcript using Node.js. Length:", truncatedText.length);
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    } catch (nodeError: any) {
-                        console.error("Node.js fetch failed on Vercel:", nodeError.message);
-                        throw new Error(`YouTube blocked the automatic request (IP block). This often happens on cloud providers like Vercel. Please use **Manual Mode** by clicking the 'Switch to Manual' button.`);
-                    }
-                } else {
-                    // Development: Use local Python script
-                    console.log("Environment: Local/Node. Using local Python script...");
-                    const projectRoot = process.cwd();
-                    const scriptPath = path.join(projectRoot, "get_transcript.py");
-
-                    console.log("Running Python script:", `python "${scriptPath}" ${videoId}`);
-
-                    const { stdout, stderr } = await execAsync(`python "${scriptPath}" ${videoId}`);
-                    if (stderr) console.log("Python script stderr:", stderr);
-
-                    const result = JSON.parse(stdout.trim());
-
-                    if (result.error) throw new Error(result.error);
-                    if (!result.transcript) throw new Error("No transcript returned from Python script");
-
-                    const rawText = result.transcript;
-                    console.log("Transcript length:", rawText.length);
-                    truncatedText = rawText.substring(0, 20000);
-                }
-
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                truncatedText = await fetchWithFailover(videoId);
+                console.log("Successfully fetched transcript. Length:", truncatedText.length);
             } catch (error: any) {
-                console.error("Transcript error details:", error);
-
-                const errorMessage = error.message || "Failed to fetch transcript";
-
-                // If Python script failed, prompt manual mode
+                console.error("Transcript failure on server:", error.message);
                 return NextResponse.json(
-                    { error: `Automatic fetch failed (${process.env.VERCEL ? 'Cloud' : 'Local'}): ${errorMessage}. Please use Manual Mode.` },
-                    { status: 500 }
+                    {
+                        error: `YouTube IP Block: ${error.message}`,
+                        isIPBlock: true,
+                        videoId: videoId
+                    },
+                    { status: 403 }
                 );
             }
         }
