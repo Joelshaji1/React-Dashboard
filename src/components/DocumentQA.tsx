@@ -45,7 +45,7 @@ export default function DocumentQA() {
         formData.append("file", file);
 
         try {
-            const res = await fetch("/api/documents/upload", {
+            const res = await fetch("/api/documents", {
                 method: "POST",
                 body: formData,
             });
