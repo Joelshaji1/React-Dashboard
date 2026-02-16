@@ -8,7 +8,8 @@ import {
     LayoutDashboard,
     ShieldCheck,
     LogOut,
-    UserCircle
+    UserCircle,
+    FileText
 } from "lucide-react";
 
 interface SidebarProps {
@@ -24,6 +25,12 @@ export default function Sidebar({ userRole }: SidebarProps) {
             icon: LayoutDashboard,
             href: "/dashboard",
             color: "text-sky-500",
+        },
+        {
+            label: "Document Q&A",
+            icon: FileText,
+            href: "/documents",
+            color: "text-orange-500",
         },
         ...(userRole === "ADMIN" ? [{
             label: "Admin Panel",
