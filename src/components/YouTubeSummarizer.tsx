@@ -109,10 +109,12 @@ export default function YouTubeSummarizer() {
             const tracks = captions.playerCaptionsTracklistRenderer.captionTracks;
             if (!tracks || tracks.length === 0) throw new Error("No caption tracks found (captions might be disabled by the creator).");
 
-            const ultraMeshProxies = [
+            const gigaMeshProxies = [
                 { name: "AllOrigins (Raw)", url: (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, type: "text" },
                 { name: "CorsProxy.io", url: (u: string) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`, type: "text" },
                 { name: "CodeTabs", url: (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`, type: "text" },
+                { name: "Htmldriven", url: (u: string) => `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(u)}`, type: "text" },
+                { name: "FuckCORS", url: (u: string) => `https://api.fuckcors.com/proxy?url=${encodeURIComponent(u)}`, type: "text" },
                 { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}`, type: "text" },
                 { name: "AllOrigins (JSON)", url: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: "json" },
                 { name: "Direct", url: (u: string) => u, type: "text" }
@@ -121,42 +123,48 @@ export default function YouTubeSummarizer() {
             let xml = "";
             const tryFormats = ["json3", "srv1", "srv2"];
 
-            for (const fmt of tryFormats) {
-                let currentUrl = tracks[0].baseUrl;
-                if (!currentUrl.includes("fmt=")) {
-                    currentUrl += `&fmt=${fmt}`;
-                } else {
-                    currentUrl = currentUrl.replace(/fmt=[^&]+/, `fmt=${fmt}`);
-                }
+            // GIGA-MESH: Try multiple tracks and formats across all proxies
+            const availableTracks = tracks.slice(0, 3); // Try top 3 tracks (usually English, then Auto, etc.)
 
-                setStatus(`Attempting download (${fmt} format)...`);
+            for (const track of availableTracks) {
+                for (const fmt of tryFormats) {
+                    let currentUrl = track.baseUrl;
+                    if (!currentUrl.includes("fmt=")) {
+                        currentUrl += `&fmt=${fmt}`;
+                    } else {
+                        currentUrl = currentUrl.replace(/fmt=[^&]+/, `fmt=${fmt}`);
+                    }
 
-                for (const proxy of ultraMeshProxies) {
-                    try {
-                        const res = await fetch(proxy.url(currentUrl));
-                        let content = "";
-                        if (proxy.type === "json") {
-                            const data = await res.json();
-                            content = data.contents || data;
-                        } else {
-                            content = await res.text();
-                        }
+                    setStatus(`Bypassing ${track.languageCode || "default"} (${fmt})...`);
 
-                        if (content && !isBlockResponse(content, true)) {
-                            // Check for common transcript signatures
-                            if (content.includes("<text") || content.includes("<p ") || content.includes("events") || content.includes("utf8")) {
-                                xml = content;
-                                break;
+                    for (const proxy of gigaMeshProxies) {
+                        try {
+                            const res = await fetch(proxy.url(currentUrl));
+                            let content = "";
+                            if (proxy.type === "json") {
+                                const data = await res.json();
+                                content = data.contents || data;
+                            } else {
+                                content = await res.text();
                             }
-                        }
-                    } catch (e) { /* next proxy */ }
+
+                            if (content && !isBlockResponse(content, true)) {
+                                if (content.includes("<text") || content.includes("<p ") || content.includes("events") || content.includes("utf8")) {
+                                    xml = content;
+                                    break;
+                                }
+                            }
+                        } catch (e) { /* next proxy */ }
+                    }
+                    if (xml) break;
                 }
-                if (xml) break; // Success!
+                if (xml) break;
             }
 
             if (!xml) {
-                throw new Error("Maximum fallback reached. YouTube blocked all 18 bypass attempts for this transcript. Please try Manual Mode or wait 5 minutes.");
+                throw new Error("Giga-Mesh exhausted. YouTube has strictly blocked 40+ bypass attempts. This video might be protected or requires localized access. Please use Manual Mode.");
             }
+
 
             setStatus("Extracting text content...");
             const xmlString = typeof xml === 'string' ? xml : JSON.stringify(xml);
