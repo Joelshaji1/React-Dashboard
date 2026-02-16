@@ -215,7 +215,7 @@ export default function DocumentQA() {
                                 value={question}
                                 onChange={(e) => setQuestion(e.target.value)}
                                 disabled={!selectedDocId || querying}
-                                className="flex-1 p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50"
+                                className="flex-1 p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 text-slate-900"
                                 onKeyDown={(e) => e.key === "Enter" && handleQuery()}
                             />
                             <button
@@ -230,7 +230,7 @@ export default function DocumentQA() {
                         {answer && (
                             <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Answer</p>
-                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{answer}</p>
+                                <p className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap font-medium">{answer}</p>
                             </div>
                         )}
                     </div>
