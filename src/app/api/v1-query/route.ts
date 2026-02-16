@@ -48,15 +48,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        const context = document.content.substring(0, 15000);
         const models = [
+            "liquid/lfm-2.5-1.2b-thinking:free",
+            "meta-llama/llama-3.2-3b-instruct:free",
             "google/gemma-2-9b-it:free",
             "mistralai/mistral-7b-instruct:free",
-            "meta-llama/llama-3.2-3b-instruct:free",
-            "deepseek/deepseek-r1:free"
+            "openrouter/auto"
         ];
 
-        let lastError = null;
+        let lastError: any = null;
         for (const model of models) {
             try {
                 const response = await openai.chat.completions.create({
@@ -79,14 +79,15 @@ export async function POST(req: NextRequest) {
                         model_used: model
                     });
                 }
-            } catch (e) {
+            } catch (e: any) {
                 lastError = e;
-                console.warn(`Model ${model} failed, trying next...`, (e as Error).message);
+                console.warn(`Model ${model} failed, trying next...`, e.message);
                 continue;
             }
         }
 
-        throw lastError || new Error("All models failed to respond");
+        const fallbackMsg = lastError?.message || "AI services are currently busy or unreachable.";
+        return NextResponse.json({ error: `AI Error: ${fallbackMsg}. Please try again in a moment.` }, { status: 503 });
     } catch (error) {
         const err = error as Error;
         console.error("POST /api/v1-query error:", err);
