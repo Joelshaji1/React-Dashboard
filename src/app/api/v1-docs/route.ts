@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    console.log("[v1-docs] POST - v1.11 Ultra Discovery");
+    console.log("[v1-docs] POST - v1.12 Content Insight");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -52,13 +52,11 @@ export async function POST(req: NextRequest) {
                 const require = createRequire(import.meta.url);
                 const pdfModule = require("pdf-parse");
 
-                // --- RECURSIVE DISCOVERY ENGINE ---
                 const findFunction = (obj: any, depth = 0): any => {
                     if (depth > 3) return null;
                     if (typeof obj === "function") return obj;
                     if (obj && typeof obj === "object") {
                         if (obj.default && typeof obj.default === "function") return obj.default;
-                        // Search keys
                         for (const k of Object.keys(obj)) {
                             if (typeof obj[k] === "function") return obj[k];
                         }
@@ -67,37 +65,42 @@ export async function POST(req: NextRequest) {
                 };
 
                 const pdfFn = findFunction(pdfModule);
-
-                if (!pdfFn) {
-                    const keys = pdfModule ? Object.keys(pdfModule).join(", ") : "null";
-                    throw new Error(`PDF Engine not found. Type: ${typeof pdfModule}, Keys: [${keys}]`);
-                }
+                if (!pdfFn) throw new Error("PDF Engine not found in module");
 
                 const extract = async (fn: any, buf: Buffer) => {
-                    try {
-                        return await fn(buf);
-                    } catch (e: any) {
-                        // Fallback for Class constructor mislabeling
-                        return await (new fn(buf));
-                    }
+                    try { return await fn(buf); }
+                    catch (e: any) { return await (new fn(buf)); }
                 };
 
                 const data = await extract(pdfFn, buffer);
-                content = data.text;
-                console.log("[v1-docs] POST - PDF Success");
+
+                // --- CONTENT INSIGHT v1.12 ---
+                const rawText = data?.text || "";
+                const info = data?.info ? JSON.stringify(data.info) : "no-info";
+                const numPages = data?.numpages || 0;
+
+                console.log(`[v1-docs] POST - Extract Stats: Pages=${numPages}, Info=${info}, TextLen=${rawText.length}`);
+
+                content = rawText;
+
+                if (!content || content.trim().length === 0) {
+                    throw new Error(`Empty text extracted. Pages detected: ${numPages}. This might be an image-only PDF or a scan.`);
+                }
             } catch (pError) {
                 console.error("[v1-docs] POST - PDF Crash:", pError);
                 return NextResponse.json({
                     error: "PDF Extraction Failed",
                     details: (pError as Error).message,
-                    meta: "v1.11"
+                    v: "1.12"
                 }, { status: 500 });
             }
         } else {
             content = buffer.toString("utf-8");
         }
 
-        if (!content) return NextResponse.json({ error: "Empty content" }, { status: 400 });
+        if (!content || content.trim().length === 0) {
+            return NextResponse.json({ error: "Empty content - check file format" }, { status: 400 });
+        }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const doc = await (prisma as any).document.create({
