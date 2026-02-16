@@ -39,17 +39,17 @@ export default function DocumentQA() {
                         const data = JSON.parse(text);
                         errorDetails = data.details || data.error || text;
                     } catch {
-                        errorDetails = text.slice(0, 100); // Show first 100 chars of HTML if not JSON
+                        errorDetails = text.slice(0, 100);
                     }
                 } catch {
                     errorDetails = res.statusText;
                 }
-                toast.error(`Fetch failed on ${url}: ${res.status} ${errorDetails}`);
+                toast.error(`Fetch failed: ${res.status} ${errorDetails}`);
             }
         } catch (error) {
             const err = error as Error;
             console.error("Error fetching documents:", err);
-            toast.error(`Network error fetching ${url}: ${err.message}`);
+            toast.error(`Network error: ${err.message}`);
         }
     }, [selectedDocId]);
 
@@ -61,7 +61,6 @@ export default function DocumentQA() {
         if (!file) return;
         setUploading(true);
         const url = `/api/v1-docs?t=${Date.now()}`;
-
         const formData = new FormData();
         formData.append("file", file);
 
@@ -92,7 +91,7 @@ export default function DocumentQA() {
             }
         } catch (error) {
             const err = error as Error;
-            toast.error(`Network error on ${url}: ${err.message}`);
+            toast.error(`Network error: ${err.message}`);
         } finally {
             setUploading(false);
         }
@@ -134,14 +133,14 @@ export default function DocumentQA() {
             }
         } catch (error) {
             const err = error as Error;
-            toast.error(`Network error on ${url}: ${err.message}`);
+            toast.error(`Network error: ${err.message}`);
         } finally {
             setQuerying(false);
         }
     };
 
     const handleDelete = async (e: React.MouseEvent, docId: string) => {
-        e.stopPropagation(); // Prevent selection when clicking delete
+        e.stopPropagation();
         if (!confirm("Are you sure you want to delete this document?")) return;
 
         try {
@@ -164,7 +163,7 @@ export default function DocumentQA() {
     return (
         <div className="p-6 space-y-8">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-slate-900">
                     <Upload className="w-5 h-5 text-indigo-600" />
                     Upload Document
                 </h2>
@@ -194,7 +193,7 @@ export default function DocumentQA() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Document List */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-1">
-                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900">
                         <FileText className="w-5 h-5 text-indigo-600" />
                         My Documents
                     </h2>
@@ -232,7 +231,7 @@ export default function DocumentQA() {
 
                 {/* Q&A Interface */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-2">
-                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900">
                         <Send className="w-5 h-5 text-indigo-600" />
                         Ask Your Document
                     </h2>
