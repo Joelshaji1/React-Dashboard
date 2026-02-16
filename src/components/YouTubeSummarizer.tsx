@@ -104,47 +104,58 @@ export default function YouTubeSummarizer() {
 
             if (!xml) throw new Error("Could not download the transcript file.");
 
-            setStatus("Parsing transcript data...");
-            const parser = new DOMParser();
+            setStatus("Extracting text content...");
             const xmlString = typeof xml === 'string' ? xml : JSON.stringify(xml);
 
-            // Try XML/SRV1 parsing
-            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-            const textElements = Array.from(xmlDoc.getElementsByTagName("text"));
-
-            if (textElements.length > 0) {
-                return textElements
-                    .map(el => (el.textContent || "").trim())
-                    .filter(t => t.length > 0)
-                    .join(" ")
-                    .replace(/&amp;/g, "&")
-                    .replace(/&lt;/g, "<")
-                    .replace(/&gt;/g, ">")
-                    .replace(/&#39;/g, "'")
-                    .replace(/&quot;/g, '"');
-            }
-
-            // Fallback: Try SRV2 (TimedText) parsing
-            const pElements = Array.from(xmlDoc.getElementsByTagName("p"));
-            if (pElements.length > 0) {
-                return pElements
-                    .map(el => (el.textContent || "").trim())
-                    .filter(t => t.length > 0)
-                    .join(" ");
-            }
-
-            // Fallback: Try JSON3 parsing
+            // 1. DOM Parser (Standard XML/SRV1/SRV2)
             try {
-                const jsonData = JSON.parse(xmlString);
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+
+                // Try <text> (SRV1)
+                const textNodes = Array.from(xmlDoc.getElementsByTagName("text"));
+                if (textNodes.length > 0) {
+                    return textNodes.map(n => n.textContent || "").join(" ").trim();
+                }
+
+                // Try <p> (SRV2/TimedText)
+                const pNodes = Array.from(xmlDoc.getElementsByTagName("p"));
+                if (pNodes.length > 0) {
+                    return pNodes.map(n => n.textContent || "").join(" ").trim();
+                }
+            } catch (e) {
+                console.warn("DOMParser failed, falling back to regex...");
+            }
+
+            // 2. JSON Parser (JSON3/Events)
+            try {
+                const jsonData = typeof xml === 'string' ? JSON.parse(xml) : xml;
                 if (jsonData.events) {
-                    return jsonData.events
+                    const text = jsonData.events
                         .filter((e: any) => e.segs)
                         .map((e: any) => e.segs.map((s: any) => s.utf8).join(""))
-                        .join(" ");
+                        .join(" ")
+                        .trim();
+                    if (text) return text;
                 }
-            } catch (e) { /* ignore */ }
+            } catch (e) { /* not json */ }
 
-            throw new Error("The bypass reached YouTube, but no readable text was found in the transcript file. Please use Manual Mode.");
+            // 3. Brute Force Regex (Catch-all for any tag-based format)
+            // This extracts any content between <tags> that doesn't look like code/metadata
+            const bruteForceMatch = xmlString.match(/>([^<]{2,})</g);
+            if (bruteForceMatch) {
+                const extracted = bruteForceMatch
+                    .map(m => m.substring(1, m.length - 1).trim())
+                    .filter(t => !t.includes("<?xml") && !t.startsWith("http") && t.length > 1)
+                    .join(" ");
+
+                if (extracted.length > 50) {
+                    console.log("Omni-Parse: Used brute-force regex successfully.");
+                    return extracted.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+                }
+            }
+
+            throw new Error("Bypass succeeded, but transcript content is unreadable. The video might be using a protected or unsupported caption format.");
         } catch (e: any) {
             console.error("Extraction failed:", e);
             throw new Error(`Auto-fix failed: ${e.message}`);
