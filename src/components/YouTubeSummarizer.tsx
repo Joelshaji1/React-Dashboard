@@ -14,6 +14,7 @@ export default function YouTubeSummarizer() {
 
     const [summary, setSummary] = useState("");
     const [loading, setLoading] = useState(false);
+    const [status, setStatus] = useState("");
     const [error, setError] = useState("");
 
     const fetchTranscriptClient = async (videoId: string) => {
@@ -151,7 +152,7 @@ export default function YouTubeSummarizer() {
                         {loading ? (
                             <>
                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                Processing...
+                                {status || "Processing..."}
                             </>
                         ) : (
                             "Summarize"
