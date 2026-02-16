@@ -75,6 +75,7 @@ export default function RegisterPage() {
                                 className="mt-1 block w-full rounded-lg bg-gray-700 border border-gray-600 px-3 py-2 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && handleSubmit(e as any)}
                             />
                         </div>
                         <div>
@@ -89,6 +90,7 @@ export default function RegisterPage() {
                                 className="mt-1 block w-full rounded-lg bg-gray-700 border border-gray-600 px-3 py-2 text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                onKeyDown={(e) => e.key === "Enter" && handleSubmit(e as any)}
                             />
                         </div>
                     </div>
