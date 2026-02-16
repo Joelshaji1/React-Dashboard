@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 /** 
- * Polyfill for DOMMatrix which is missing in some Node environments but expected by pdf.js (used in forks).
+ * Polyfill for DOMMatrix which is missing in some Node environments but expected by pdf-parse's dependencies.
  */
 if (typeof globalThis.DOMMatrix === "undefined") {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    console.log("[v1-docs] POST - v1.15 Modern Fork");
+    console.log("[v1-docs] POST - v1.16 XRef Resilience");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,28 +48,41 @@ export async function POST(req: NextRequest) {
 
         if (file.type === "application/pdf") {
             try {
-                // Use the modern fork instead of the original pdf-parse
                 const { createRequire } = await import("module");
                 const require = createRequire(import.meta.url);
                 const pdf = require("pdf-parse-fork");
 
-                // Stable direct call
-                const data = await pdf(buffer);
+                // --- XREF RESILIENCE v1.16 ---
+                // Convert to Uint8Array which is the native format for PDF.js engines
+                // This sometimes heals "bad XRef" errors caused by Buffer-to-String misinterpretations
+                const uint8Array = new Uint8Array(buffer);
+
+                // Options to be more lenient if the library allows it
+                const options = {
+                    // pdf-parse doesn't officially document many options, 
+                    // but passing an empty or standard object can sometimes reset internal states
+                };
+
+                const data = await pdf(uint8Array, options);
 
                 content = data?.text || "";
 
                 if (!content || content.trim().length === 0) {
-                    const pages = data?.numpages || 0;
-                    throw new Error(`Extraction yielded zero text. Pages detected: ${pages}. File might be a scanned image.`);
+                    throw new Error(`Pages: ${data?.numpages || 0}. The PDF structure is readable but yielded no text (image-only?)`);
                 }
 
-                console.log("[v1-docs] PDF Success - v1.15");
-            } catch (pError) {
-                console.error("[v1-docs] PDF Fork Error:", pError);
+                console.log("[v1-docs] PDF Success - v1.16");
+            } catch (pError: any) {
+                console.error("[v1-docs] PDF Resilience Error:", pError);
+
+                // If we get XRef error, it's a sign the PDF structure is tricky.
+                // We provide the user with a specific "Repair" message.
+                const isXRef = pError.message.includes("XRef") || pError.message.includes("entry");
+
                 return NextResponse.json({
-                    error: "PDF Extraction Failed",
-                    details: (pError as Error).message,
-                    v: "1.15"
+                    error: isXRef ? "PDF Structure Error (XRef)" : "PDF Extraction Failed",
+                    details: pError.message + (isXRef ? ". Try saving the PDF as a 'Reduced Size PDF' or 'Optimized PDF' and re-uploading." : ""),
+                    v: "1.16"
                 }, { status: 500 });
             }
         } else {
