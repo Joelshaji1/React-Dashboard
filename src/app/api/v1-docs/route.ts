@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 /** 
- * Polyfill for DOMMatrix which is missing in some Node environments but expected by pdf-parse's dependencies.
+ * Polyfill for DOMMatrix which is missing in some Node environments but expected by pdf.js (used in forks).
  */
 if (typeof globalThis.DOMMatrix === "undefined") {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-    console.log("[v1-docs] POST - v1.14 Final Bridge");
+    console.log("[v1-docs] POST - v1.15 Modern Fork");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -48,64 +48,28 @@ export async function POST(req: NextRequest) {
 
         if (file.type === "application/pdf") {
             try {
+                // Use the modern fork instead of the original pdf-parse
                 const { createRequire } = await import("module");
                 const require = createRequire(import.meta.url);
+                const pdf = require("pdf-parse-fork");
 
-                // Attempt to load the library in the most compatible way
-                const pdfModule = require("pdf-parse");
-
-                // --- UNIVERSAL BRIDGE ENGINE v1.14 ---
-                const findRealFunction = (mod: any): any => {
-                    if (typeof mod === "function") return mod;
-                    if (mod?.default && typeof mod.default === "function") return mod.default;
-                    // Some versions of the library export an object with the function as the only key
-                    const keys = Object.keys(mod || {});
-                    for (const k of keys) {
-                        if (typeof mod[k] === "function") return mod[k];
-                    }
-                    return null;
-                };
-
-                const pdfFn = findRealFunction(pdfModule);
-                if (!pdfFn) {
-                    const keys = Object.keys(pdfModule || {}).join(", ");
-                    throw new Error(`Critical: Module loaded as ${typeof pdfModule} with keys: [${keys}] but no function found.`);
-                }
-
-                // Explicitly pass data to the function with error handling for constructor mismatches
-                let data: any;
-                try {
-                    data = await pdfFn(buffer);
-                } catch (e: any) {
-                    if (e.message.includes("constructor") || e.message.includes("new")) {
-                        console.log("[v1-docs] Retrying with constructor call");
-                        data = await (new pdfFn(buffer));
-                    } else {
-                        throw e;
-                    }
-                }
+                // Stable direct call
+                const data = await pdf(buffer);
 
                 content = data?.text || "";
-                const pages = data?.numpages || 0;
-
-                // SPECIAL FALLBACK: If text is empty but pages > 0, we might need a different property
-                if ((!content || content.trim().length === 0) && pages > 0) {
-                    content = data?.text_original || data?.raw_text || "";
-                }
 
                 if (!content || content.trim().length === 0) {
-                    const header = buffer.subarray(0, 5).toString("utf-8");
-                    const keys = Object.keys(data || {}).join(", ");
-                    throw new Error(`Engine stalled. Pages: ${pages}, Keys: [${keys}], Sig: ${header}. The PDF might be non-standard or image-only.`);
+                    const pages = data?.numpages || 0;
+                    throw new Error(`Extraction yielded zero text. Pages detected: ${pages}. File might be a scanned image.`);
                 }
 
-                console.log("[v1-docs] PDF Success - v1.14");
+                console.log("[v1-docs] PDF Success - v1.15");
             } catch (pError) {
-                console.error("[v1-docs] PDF Crash Detail:", pError);
+                console.error("[v1-docs] PDF Fork Error:", pError);
                 return NextResponse.json({
-                    error: "PDF Stabilization Error",
+                    error: "PDF Extraction Failed",
                     details: (pError as Error).message,
-                    v: "1.14"
+                    v: "1.15"
                 }, { status: 500 });
             }
         } else {
