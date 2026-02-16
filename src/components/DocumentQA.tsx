@@ -138,132 +138,134 @@ export default function DocumentQA() {
         } finally {
             setQuerying(false);
         }
-        const handleDelete = async (e: React.MouseEvent, docId: string) => {
-            e.stopPropagation(); // Prevent selection when clicking delete
-            if (!confirm("Are you sure you want to delete this document?")) return;
+    };
 
-            try {
-                const res = await fetch(`/api/v1-docs/${docId}`, {
-                    method: "DELETE",
-                });
+    const handleDelete = async (e: React.MouseEvent, docId: string) => {
+        e.stopPropagation(); // Prevent selection when clicking delete
+        if (!confirm("Are you sure you want to delete this document?")) return;
 
-                if (res.ok) {
-                    toast.success("Document deleted");
-                    if (selectedDocId === docId) setSelectedDocId(null);
-                    fetchDocuments();
-                } else {
-                    toast.error("Failed to delete document");
-                }
-            } catch (error) {
-                toast.error("Network error deleting document");
+        try {
+            const res = await fetch(`/api/v1-docs/${docId}`, {
+                method: "DELETE",
+            });
+
+            if (res.ok) {
+                toast.success("Document deleted");
+                if (selectedDocId === docId) setSelectedDocId(null);
+                fetchDocuments();
+            } else {
+                toast.error("Failed to delete document");
             }
-        };
+        } catch (error) {
+            toast.error("Network error deleting document");
+        }
+    };
 
-        return (
-            <div className="p-6 space-y-8">
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                        <Upload className="w-5 h-5 text-indigo-600" />
-                        Upload Document
-                    </h2>
-                    <div className="flex items-center gap-4">
-                        <input
-                            type="file"
-                            accept=".pdf,.txt"
-                            onChange={(e) => setFile(e.target.files?.[0] || null)}
-                            className="block w-full text-sm text-slate-500
+    return (
+        <div className="p-6 space-y-8">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                    <Upload className="w-5 h-5 text-indigo-600" />
+                    Upload Document
+                </h2>
+                <div className="flex items-center gap-4">
+                    <input
+                        type="file"
+                        accept=".pdf,.txt"
+                        onChange={(e) => setFile(e.target.files?.[0] || null)}
+                        className="block w-full text-sm text-slate-500
                             file:mr-4 file:py-2 file:px-4
                             file:rounded-full file:border-0
                             file:text-sm file:font-semibold
                             file:bg-indigo-50 file:text-indigo-700
                             hover:file:bg-indigo-100 cursor-pointer"
-                        />
-                        <button
-                            onClick={handleUpload}
-                            disabled={!file || uploading}
-                            className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
-                        >
-                            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload"}
-                        </button>
+                    />
+                    <button
+                        onClick={handleUpload}
+                        disabled={!file || uploading}
+                        className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+                    >
+                        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload"}
+                    </button>
+                </div>
+                <p className="mt-2 text-xs text-slate-400">Supported formats: PDF, TXT (Max 10MB)</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {/* Document List */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-1">
+                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <FileText className="w-5 h-5 text-indigo-600" />
+                        My Documents
+                    </h2>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                        {documents.length === 0 ? (
+                            <p className="text-sm text-slate-400 text-center py-4">No documents uploaded yet.</p>
+                        ) : (
+                            documents.map((doc) => (
+                                <div
+                                    key={doc.id}
+                                    onClick={() => setSelectedDocId(doc.id)}
+                                    className={`p-3 rounded-lg cursor-pointer border transition flex items-center justify-between group ${selectedDocId === doc.id
+                                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                        : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
+                                        }`}
+                                >
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{doc.name}</p>
+                                        <p className="text-[10px] opacity-70">
+                                            {new Date(doc.createdAt).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={(e) => handleDelete(e, doc.id)}
+                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                        title="Remove document"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ))
+                        )}
                     </div>
-                    <p className="mt-2 text-xs text-slate-400">Supported formats: PDF, TXT (Max 10MB)</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {/* Document List */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-1">
-                        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                            <FileText className="w-5 h-5 text-indigo-600" />
-                            My Documents
-                        </h2>
-                        <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                            {documents.length === 0 ? (
-                                <p className="text-sm text-slate-400 text-center py-4">No documents uploaded yet.</p>
-                            ) : (
-                                documents.map((doc) => (
-                                    <div
-                                        key={doc.id}
-                                        onClick={() => setSelectedDocId(doc.id)}
-                                        className={`p-3 rounded-lg cursor-pointer border transition flex items-center justify-between group ${selectedDocId === doc.id
-                                            ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                            : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
-                                            }`}
-                                    >
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium truncate">{doc.name}</p>
-                                            <p className="text-[10px] opacity-70">
-                                                {new Date(doc.createdAt).toLocaleDateString()}
-                                            </p>
-                                        </div>
-                                        <button
-                                            onClick={(e) => handleDelete(e, doc.id)}
-                                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-                                            title="Remove document"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                ))
-                            )}
+                {/* Q&A Interface */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-2">
+                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                        <Send className="w-5 h-5 text-indigo-600" />
+                        Ask Your Document
+                    </h2>
+
+                    <div className="space-y-4">
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                placeholder={selectedDocId ? "Ask a question about the selected document..." : "Select or upload a document first"}
+                                value={question}
+                                onChange={(e) => setQuestion(e.target.value)}
+                                disabled={!selectedDocId || querying}
+                                className="flex-1 p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 text-slate-900"
+                                onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+                            />
+                            <button
+                                onClick={handleQuery}
+                                disabled={!selectedDocId || !question.trim() || querying}
+                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
+                            >
+                                {querying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ask"}
+                            </button>
                         </div>
-                    </div>
 
-                    {/* Q&A Interface */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-2">
-                        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                            <Send className="w-5 h-5 text-indigo-600" />
-                            Ask Your Document
-                        </h2>
-
-                        <div className="space-y-4">
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    placeholder={selectedDocId ? "Ask a question about the selected document..." : "Select or upload a document first"}
-                                    value={question}
-                                    onChange={(e) => setQuestion(e.target.value)}
-                                    disabled={!selectedDocId || querying}
-                                    className="flex-1 p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 text-slate-900"
-                                    onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-                                />
-                                <button
-                                    onClick={handleQuery}
-                                    disabled={!selectedDocId || !question.trim() || querying}
-                                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
-                                >
-                                    {querying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ask"}
-                                </button>
+                        {answer && (
+                            <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Answer</p>
+                                <p className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap font-medium">{answer}</p>
                             </div>
-
-                            {answer && (
-                                <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Answer</p>
-                                    <p className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap font-medium">{answer}</p>
-                                </div>
-                            )}
-                        </div>
+                        )}
                     </div>
                 </div>
             </div>
-        );
-    }
+        </div>
+    );
+}
