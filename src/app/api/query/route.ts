@@ -5,16 +5,11 @@ import { prisma } from "@/lib/prisma";
 import OpenAI from "openai";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const openai = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
     baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
 });
-
-export async function GET() {
-    return NextResponse.json({ error: "Method Not Allowed. Use POST." }, { status: 405 });
-}
 
 export async function POST(req: NextRequest) {
     try {
@@ -42,20 +37,18 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        // Simple RAG logic: Truncate content to fit in context window
-        // In a real app, we'd use vector embeddings and a vector DB.
-        const context = document.content.substring(0, 15000); // ~4k-5k tokens
+        const context = document.content.substring(0, 15000);
 
         const response = await openai.chat.completions.create({
-            model: "meta-llama/llama-3-8b-instruct:free", // Using a free model
+            model: "meta-llama/llama-3-8b-instruct:free",
             messages: [
                 {
                     role: "system",
-                    content: "You are a helpful assistant. Answer the user's question based ONLY on the provided document content. If the answer is not in the document, say you don't know."
+                    content: "Answer the question based ONLY on the provided document. If unsure, say you don't know."
                 },
                 {
                     role: "user",
-                    content: `Document Content:\n${context}\n\nQuestion: ${question}`
+                    content: `Document:\n${context}\n\nQuestion: ${question}`
                 }
             ],
         });
@@ -63,7 +56,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
             answer: response.choices[0].message.content
         });
-
     } catch (error) {
         const err = error as Error;
         console.error("Query error:", err);

@@ -5,22 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { PDFParse } from "pdf-parse";
 
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
-export async function OPTIONS() {
-    return new NextResponse(null, {
-        status: 204,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-    });
-}
 
 export async function GET() {
     try {
-        console.log("GET /api/files - Fetching documents");
         const session = await getServerSession(authOptions);
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,7 +25,6 @@ export async function GET() {
         });
 
         return NextResponse.json(documents);
-
     } catch (error) {
         const err = error as Error;
         console.error("Fetch documents error:", err);
@@ -48,10 +34,8 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
     try {
-        console.log("POST /api/files - Starting upload");
         const session = await getServerSession(authOptions);
         if (!session?.user) {
-            console.warn("POST /api/files - Unauthorized attempt");
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -63,16 +47,12 @@ export async function POST(req: NextRequest) {
         }
 
         const buffer = Buffer.from(await file.arrayBuffer());
-        console.log(`Processing file: ${file.name}, type: ${file.type}, size: ${buffer.length}`);
-
         let content = "";
 
         if (file.type === "application/pdf") {
-            console.log("Starting PDF extraction...");
             const parser = new PDFParse({ data: buffer });
             const data = await parser.getText();
             content = data.text;
-            console.log("PDF extraction complete.");
         } else if (file.type === "text/plain") {
             content = buffer.toString("utf-8");
         } else {
@@ -92,14 +72,11 @@ export async function POST(req: NextRequest) {
             },
         });
 
-        console.log(`Successfully created document: ${document.id}`);
-
         return NextResponse.json({
-            message: "File uploaded and processed successfully",
+            message: "File uploaded successfully",
             documentId: document.id,
             name: document.name
         });
-
     } catch (error) {
         const err = error as Error;
         console.error("Upload error:", err);
