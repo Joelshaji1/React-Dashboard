@@ -25,8 +25,12 @@ export default function YouTubeSummarizer() {
             { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: "text" }
         ];
 
-        const isBlockResponse = (text: string) => {
-            if (!text || text.length < 500) return true;
+        const isBlockResponse = (text: string, isTranscript = false) => {
+            if (!text) return true;
+            // Watch pages are always > 100k, but transcripts can be very small (e.g. 100 bytes)
+            if (!isTranscript && text.length < 5000) return true;
+            if (isTranscript && text.length < 2) return true;
+
             const terms = [
                 "Service Unavailable",
                 "unusual traffic",
@@ -123,7 +127,7 @@ export default function YouTubeSummarizer() {
                         content = await res.text();
                     }
 
-                    if (content && !isBlockResponse(content)) {
+                    if (content && !isBlockResponse(content, true)) {
                         if (content.includes("<text") || content.includes("<p ") || content.includes("events")) {
                             xml = content;
                             break;
@@ -132,7 +136,7 @@ export default function YouTubeSummarizer() {
                 } catch (e) { /* next */ }
             }
 
-            if (!xml) throw new Error("Could not download the transcript file.");
+            if (!xml) throw new Error("YouTube blocked the bypass when downloading the transcript data. Please try again in 5 minutes or use Manual Mode.");
 
             setStatus("Extracting text content...");
             const xmlString = typeof xml === 'string' ? xml : JSON.stringify(xml);
