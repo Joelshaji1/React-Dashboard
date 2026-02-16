@@ -34,8 +34,13 @@ export default function DocumentQA() {
             } else {
                 let errorDetails = "";
                 try {
-                    const data = await res.json();
-                    errorDetails = data.details || data.error || "";
+                    const text = await res.text();
+                    try {
+                        const data = JSON.parse(text);
+                        errorDetails = data.details || data.error || text;
+                    } catch {
+                        errorDetails = text.slice(0, 100); // Show first 100 chars of HTML if not JSON
+                    }
                 } catch {
                     errorDetails = res.statusText;
                 }
@@ -73,8 +78,13 @@ export default function DocumentQA() {
             } else {
                 let errorMessage = `Upload failed: Status ${res.status}`;
                 try {
-                    const data = await res.json();
-                    errorMessage = data.details || data.error || errorMessage;
+                    const text = await res.text();
+                    try {
+                        const data = JSON.parse(text);
+                        errorMessage = data.details || data.error || text;
+                    } catch {
+                        errorMessage = `HTML Error: ${text.slice(0, 100)}`;
+                    }
                 } catch {
                     errorMessage = `Server error ${res.status}: ${res.statusText}`;
                 }
@@ -110,8 +120,13 @@ export default function DocumentQA() {
             } else {
                 let errorMsg = `Query failed: Status ${res.status}`;
                 try {
-                    const data = await res.json();
-                    errorMsg = data.error || errorMsg;
+                    const text = await res.text();
+                    try {
+                        const data = JSON.parse(text);
+                        errorMsg = data.details || data.error || text;
+                    } catch {
+                        errorMsg = `HTML Error: ${text.slice(0, 100)}`;
+                    }
                 } catch {
                     errorMsg = `Server error ${res.status}: ${res.statusText}`;
                 }
