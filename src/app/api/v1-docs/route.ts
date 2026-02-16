@@ -2,52 +2,60 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PDFParse } from "pdf-parse";
 
 export const dynamic = "force-dynamic";
 
-export async function OPTIONS() {
-    return new NextResponse(null, {
-        status: 204,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-    });
-}
-
 export async function GET() {
+    console.log("[v1-docs] GET - Initiated");
     try {
-        const session = await getServerSession(authOptions);
+        let session;
+        try {
+            session = await getServerSession(authOptions);
+            console.log("[v1-docs] GET - Session retrieved:", !!session?.user);
+        } catch (sessionErr) {
+            console.error("[v1-docs] GET - Session check crashed:", sessionErr);
+            return NextResponse.json({
+                error: "Session Crash",
+                details: (sessionErr as Error).message
+            }, { status: 500 });
+        }
+
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const documents = await (prisma as any).document.findMany({
-            where: { userId: session.user.id },
-            orderBy: { createdAt: "desc" },
-            select: {
-                id: true,
-                name: true,
-                createdAt: true,
-            }
-        });
-
-        return NextResponse.json(documents);
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const documents = await (prisma as any).document.findMany({
+                where: { userId: session.user.id },
+                orderBy: { createdAt: "desc" },
+                select: {
+                    id: true,
+                    name: true,
+                    createdAt: true,
+                }
+            });
+            console.log("[v1-docs] GET - Prism Success:", documents.length);
+            return NextResponse.json(documents);
+        } catch (dbErr) {
+            console.error("[v1-docs] GET - Prisma Database Error:", dbErr);
+            return NextResponse.json({
+                error: "Database Error",
+                details: (dbErr as Error).message
+            }, { status: 500 });
+        }
     } catch (error) {
         const err = error as Error;
-        console.error("GET /api/v1-docs error:", err);
+        console.error("[v1-docs] GET - Fatal Exception:", err);
         return NextResponse.json({
-            error: "Internal Server Error",
-            details: err.message,
-            stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+            error: "Unknown Fatal Error",
+            details: err.message
         }, { status: 500 });
     }
 }
 
 export async function POST(req: NextRequest) {
+    console.log("[v1-docs] POST - Initiated");
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) {
@@ -58,16 +66,27 @@ export async function POST(req: NextRequest) {
         const file = formData.get("file") as File;
 
         if (!file) {
-            return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+            return NextResponse.json({ error: "No file provided" }, { status: 400 });
         }
 
         const buffer = Buffer.from(await file.arrayBuffer());
         let content = "";
 
         if (file.type === "application/pdf") {
-            const parser = new PDFParse({ data: buffer });
-            const data = await parser.getText();
-            content = data.text;
+            try {
+                console.log("[v1-docs] POST - Attempting dynamic PDF parse");
+                // Use dynamic import to prevent top-level route crash if module fails
+                const pdf = (await import("pdf-parse")).default;
+                const data = await pdf(buffer);
+                content = data.text;
+                console.log("[v1-docs] POST - PDF Extracted:", content.length);
+            } catch (pError) {
+                console.error("[v1-docs] POST - PDF Library Error:", pError);
+                return NextResponse.json({
+                    error: "PDF Processing Failed",
+                    details: (pError as Error).message
+                }, { status: 500 });
+            }
         } else if (file.type === "text/plain") {
             content = buffer.toString("utf-8");
         } else {
@@ -75,30 +94,37 @@ export async function POST(req: NextRequest) {
         }
 
         if (!content || content.trim().length === 0) {
-            return NextResponse.json({ error: "Extraction failed" }, { status: 400 });
+            return NextResponse.json({ error: "Extraction yielded empty text" }, { status: 400 });
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const document = await (prisma as any).document.create({
-            data: {
-                name: file.name,
-                content: content,
-                userId: session.user.id,
-            },
-        });
-
-        return NextResponse.json({
-            message: "Success",
-            documentId: document.id,
-            name: document.name
-        });
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const document = await (prisma as any).document.create({
+                data: {
+                    name: file.name,
+                    content: content,
+                    userId: session.user.id,
+                },
+            });
+            console.log("[v1-docs] POST - Save Success:", document.id);
+            return NextResponse.json({
+                message: "Success",
+                documentId: document.id,
+                name: document.name
+            });
+        } catch (dbErr) {
+            console.error("[v1-docs] POST - Prisma Save Error:", dbErr);
+            return NextResponse.json({
+                error: "Database Save Failed",
+                details: (dbErr as Error).message
+            }, { status: 500 });
+        }
     } catch (error) {
         const err = error as Error;
-        console.error("POST /api/v1-docs error:", err);
+        console.error("[v1-docs] POST - Global Handler Crash:", err);
         return NextResponse.json({
-            error: "Internal Server Error",
-            details: err.message,
-            stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+            error: "Global Upload Error",
+            details: err.message
         }, { status: 500 });
     }
 }
