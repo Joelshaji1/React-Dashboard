@@ -25,6 +25,20 @@ export default function YouTubeSummarizer() {
             { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`, type: "text" }
         ];
 
+        const isBlockResponse = (text: string) => {
+            if (!text || text.length < 500) return true;
+            const terms = [
+                "Service Unavailable",
+                "unusual traffic",
+                "action=\"https://www.google.com/sorry/index\"",
+                "YouTube is currently unavailable",
+                "Robot Check",
+                "automated requests",
+                "temporary service disruption"
+            ];
+            return terms.some(term => text.toLowerCase().includes(term.toLowerCase()));
+        };
+
         let html = "";
         let lastError = "";
 
@@ -46,9 +60,8 @@ export default function YouTubeSummarizer() {
 
                 // Content Guard: Ensure this is a real video page, not a "Sorry" page
                 const isRealPage = html.includes("ytInitialPlayerResponse") || html.includes("\"captions\":");
-                const isBlockPage = html.includes("Service Unavailable") || html.includes("unusual traffic") || html.includes("action=\"https://www.google.com/sorry/index\"");
 
-                if (isRealPage && !isBlockPage) break;
+                if (isRealPage && !isBlockResponse(html)) break;
 
                 // Discard invalid content and continue to next proxy
                 html = "";
@@ -102,13 +115,20 @@ export default function YouTubeSummarizer() {
             for (const proxy of proxies) {
                 try {
                     const res = await fetch(proxy.url(baseUrl));
+                    let content = "";
                     if (proxy.type === "json") {
                         const data = await res.json();
-                        xml = data.contents || data;
+                        content = data.contents || data;
                     } else {
-                        xml = await res.text();
+                        content = await res.text();
                     }
-                    if (xml && (xml.includes("<text") || xml.includes("<p ") || xml.includes("events"))) break;
+
+                    if (content && !isBlockResponse(content)) {
+                        if (content.includes("<text") || content.includes("<p ") || content.includes("events")) {
+                            xml = content;
+                            break;
+                        }
+                    }
                 } catch (e) { /* next */ }
             }
 
@@ -197,6 +217,14 @@ export default function YouTubeSummarizer() {
                 setStatus("IP Blocked. Applying auto-bypass...");
                 try {
                     const clientTranscript = await fetchTranscriptClient(data.videoId);
+
+                    // Final Sanity Check: Ensure we didn't harvest an error page despite guards
+                    if (clientTranscript.toLowerCase().includes("unusual traffic") ||
+                        clientTranscript.toLowerCase().includes("service disruption") ||
+                        clientTranscript.length < 100) {
+                        throw new Error("Bypass produced invalid transcript data. YouTube is strictly blocking this request.");
+                    }
+
                     setStatus("Analyzing video content...");
                     res = await fetch("/api/ai/summarize", {
                         method: "POST",
