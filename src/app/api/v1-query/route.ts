@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
         const context = document.content.substring(0, 15000);
 
         const response = await openai.chat.completions.create({
-            model: "meta-llama/llama-3.2-3b-instruct:free",
+            model: "mistralai/mistral-7b-instruct:free",
             messages: [
                 {
                     role: "system",
