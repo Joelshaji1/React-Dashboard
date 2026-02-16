@@ -19,12 +19,15 @@ export async function POST(req: NextRequest) {
         }
 
         const buffer = Buffer.from(await file.arrayBuffer());
+        console.log(`Processing file: ${file.name}, type: ${file.type}, size: ${buffer.length}`);
         let content = "";
 
         if (file.type === "application/pdf") {
+            console.log("Starting PDF extraction...");
             const parser = new PDFParse({ data: buffer });
             const data = await parser.getText();
             content = data.text;
+            console.log("PDF extraction complete.");
         } else if (file.type === "text/plain") {
             content = buffer.toString("utf-8");
         } else {
