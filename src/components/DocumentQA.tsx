@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Upload, FileText, Send, Loader2, Trash2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Upload, FileText, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Document {
@@ -19,11 +19,7 @@ export default function DocumentQA() {
     const [answer, setAnswer] = useState("");
     const [querying, setQuerying] = useState(false);
 
-    useEffect(() => {
-        fetchDocuments();
-    }, []);
-
-    const fetchDocuments = async () => {
+    const fetchDocuments = useCallback(async () => {
         try {
             const res = await fetch("/api/documents");
             if (res.ok) {
@@ -32,11 +28,18 @@ export default function DocumentQA() {
                 if (data.length > 0 && !selectedDocId) {
                     setSelectedDocId(data[0].id);
                 }
+            } else {
+                toast.error("Failed to fetch documents");
             }
         } catch (error) {
             console.error("Error fetching documents:", error);
+            toast.error("Failed to fetch documents");
         }
-    };
+    }, [selectedDocId]); // selectedDocId is a dependency because it's used in the logic to set it if not already set
+
+    useEffect(() => {
+        fetchDocuments();
+    }, [fetchDocuments]);
 
     const handleUpload = async () => {
         if (!file) return;
@@ -59,11 +62,12 @@ export default function DocumentQA() {
                 try {
                     const data = await res.json();
                     errorMessage = data.error || errorMessage;
-                } catch (e) {
+                } catch {
                     errorMessage = `Server error: ${res.status} ${res.statusText}`;
                 }
                 toast.error(errorMessage);
             }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (error: any) {
             toast.error(error.message || "An error occurred during upload");
         } finally {
@@ -90,7 +94,7 @@ export default function DocumentQA() {
                 const data = await res.json();
                 toast.error(data.error || "Query failed");
             }
-        } catch (error) {
+        } catch {
             toast.error("An error occurred during query");
         } finally {
             setQuerying(false);

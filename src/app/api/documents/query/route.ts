@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Missing document ID or question" }, { status: 400 });
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const document = await (prisma as any).document.findUnique({
             where: { id: documentId },
         });
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
             answer: response.choices[0].message.content
         });
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
         console.error("Query error:", error);
         return NextResponse.json({ error: error.message || "Failed to query document" }, { status: 500 });

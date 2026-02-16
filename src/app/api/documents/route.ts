@@ -4,13 +4,14 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PDFParse } from "pdf-parse";
 
-export async function GET(req: NextRequest) {
+export async function GET() {
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const documents = await (prisma as any).document.findMany({
             where: { userId: session.user.id },
             orderBy: { createdAt: "desc" },
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
 
         return NextResponse.json(documents);
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
         console.error("Fetch documents error:", error);
         return NextResponse.json({ error: error.message || "Failed to fetch documents" }, { status: 500 });
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Could not extract text from file." }, { status: 400 });
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const document = await (prisma as any).document.create({
             data: {
                 name: file.name,
@@ -77,6 +80,7 @@ export async function POST(req: NextRequest) {
             name: document.name
         });
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
         console.error("Upload error:", error);
         return NextResponse.json({ error: error.message || "Failed to process document" }, { status: 500 });

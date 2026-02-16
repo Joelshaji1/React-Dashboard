@@ -27,7 +27,7 @@ export default function LoginPage() {
             } else {
                 router.push("/dashboard");
             }
-        } catch (err) {
+        } catch {
             setError("An unexpected error occurred");
         }
     };
@@ -88,7 +88,7 @@ export default function LoginPage() {
 
                 <div className="text-center mt-4">
                     <Link href="/register" className="text-sm text-blue-400 hover:text-blue-300">
-                        Don't have an account? Sign up
+                        Don&apos;t have an account? Sign up
                     </Link>
                 </div>
             </div>

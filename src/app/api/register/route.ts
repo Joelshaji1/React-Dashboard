@@ -38,7 +38,7 @@ export async function POST(req: Request) {
             { message: "User created successfully", user: { email: user.email } },
             { status: 201 }
         );
-    } catch (error) {
+    } catch {
         return NextResponse.json(
             { message: "Internal server error" },
             { status: 500 }

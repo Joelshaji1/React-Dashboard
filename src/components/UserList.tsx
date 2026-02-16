@@ -12,7 +12,7 @@ type UserData = {
     createdAt: Date;
 };
 
-export default function UserList({ users: initialUsers }: { users: any[] }) {
+export default function UserList({ users: initialUsers }: { users: UserData[] }) {
     const router = useRouter();
     const [users, setUsers] = useState<UserData[]>(initialUsers);
     const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export default function UserList({ users: initialUsers }: { users: any[] }) {
                 );
                 router.refresh();
             }
-        } catch (error) {
+        } catch {
             console.error("Failed to update status");
         } finally {
             setLoadingId(null);
@@ -84,8 +84,8 @@ export default function UserList({ users: initialUsers }: { users: any[] }) {
                                         onClick={() => toggleApproval(user.id, user.isApproved)}
                                         disabled={loadingId === user.id}
                                         className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${user.isApproved
-                                                ? "bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800"
-                                                : "bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-800"
+                                            ? "bg-red-900/30 text-red-400 hover:bg-red-900/50 border border-red-800"
+                                            : "bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-800"
                                             }`}
                                     >
                                         {loadingId === user.id

@@ -50,6 +50,7 @@ export async function POST(req: Request) {
                         const rawText = transcript.map(t => t.text).join(" ");
                         truncatedText = rawText.substring(0, 25000);
                         console.log("Successfully fetched transcript using Node.js. Length:", truncatedText.length);
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     } catch (nodeError: any) {
                         console.error("Node.js fetch failed on Vercel:", nodeError.message);
                         throw new Error(`YouTube blocked the automatic request (IP block). This often happens on cloud providers like Vercel. Please use **Manual Mode** by clicking the 'Switch to Manual' button.`);
@@ -75,6 +76,7 @@ export async function POST(req: Request) {
                     truncatedText = rawText.substring(0, 20000);
                 }
 
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } catch (error: any) {
                 console.error("Transcript error details:", error);
 
@@ -127,6 +129,7 @@ export async function POST(req: Request) {
                         break; // Exit loop on success
                     }
                 }
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
             } catch (aiError: any) {
                 console.warn(`Failed with model ${model}:`, aiError.message);
                 lastError = aiError;
@@ -142,8 +145,9 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ summary });
 
-    } catch (error: any) {
-        console.error("General API Error:", error);
-        return NextResponse.json({ error: `Internal Server Error: ${error.message}` }, { status: 500 });
+    } catch (error) {
+        const err = error as Error;
+        console.error("General API Error:", err);
+        return NextResponse.json({ error: `Internal Server Error: ${err.message}` }, { status: 500 });
     }
 }
