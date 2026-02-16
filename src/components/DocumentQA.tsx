@@ -21,7 +21,7 @@ export default function DocumentQA() {
 
     const fetchDocuments = useCallback(async () => {
         try {
-            const res = await fetch("/api/docs");
+            const res = await fetch("/api/docs-list");
             if (res.ok) {
                 const data = await res.json();
                 setDocuments(data);
@@ -48,7 +48,7 @@ export default function DocumentQA() {
         formData.append("file", file);
 
         try {
-            const res = await fetch("/api/docs", {
+            const res = await fetch("/api/docs-upload", {
                 method: "POST",
                 body: formData,
             });
@@ -81,7 +81,7 @@ export default function DocumentQA() {
         setAnswer("");
 
         try {
-            const res = await fetch("/api/query", {
+            const res = await fetch("/api/docs-query", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ documentId: selectedDocId, question }),
