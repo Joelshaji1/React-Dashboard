@@ -9,6 +9,10 @@ const openai = new OpenAI({
     baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
 });
 
+export async function GET() {
+    return NextResponse.json({ error: "Method Not Allowed. Use POST." }, { status: 405 });
+}
+
 export async function POST(req: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
