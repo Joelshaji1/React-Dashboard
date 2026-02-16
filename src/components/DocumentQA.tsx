@@ -32,7 +32,14 @@ export default function DocumentQA() {
                     setSelectedDocId(data[0].id);
                 }
             } else {
-                toast.error(`Fetch failed on ${url}: ${res.status} ${res.statusText}`);
+                let errorDetails = "";
+                try {
+                    const data = await res.json();
+                    errorDetails = data.details || data.error || "";
+                } catch {
+                    errorDetails = res.statusText;
+                }
+                toast.error(`Fetch failed on ${url}: ${res.status} ${errorDetails}`);
             }
         } catch (error) {
             const err = error as Error;
@@ -67,7 +74,7 @@ export default function DocumentQA() {
                 let errorMessage = `Upload failed: Status ${res.status}`;
                 try {
                     const data = await res.json();
-                    errorMessage = data.error || errorMessage;
+                    errorMessage = data.details || data.error || errorMessage;
                 } catch {
                     errorMessage = `Server error ${res.status}: ${res.statusText}`;
                 }

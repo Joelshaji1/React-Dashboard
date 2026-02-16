@@ -39,7 +39,11 @@ export async function GET() {
     } catch (error) {
         const err = error as Error;
         console.error("GET /api/v1-docs error:", err);
-        return NextResponse.json({ error: err.message || "Failed to fetch docs" }, { status: 500 });
+        return NextResponse.json({
+            error: "Internal Server Error",
+            details: err.message,
+            stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+        }, { status: 500 });
     }
 }
 
@@ -91,6 +95,10 @@ export async function POST(req: NextRequest) {
     } catch (error) {
         const err = error as Error;
         console.error("POST /api/v1-docs error:", err);
-        return NextResponse.json({ error: err.message || "Upload failed" }, { status: 500 });
+        return NextResponse.json({
+            error: "Internal Server Error",
+            details: err.message,
+            stack: process.env.NODE_ENV === "development" ? err.stack : undefined
+        }, { status: 500 });
     }
 }
