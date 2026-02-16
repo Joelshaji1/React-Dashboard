@@ -116,18 +116,17 @@ export default function YouTubeSummarizer() {
                 { name: "Htmldriven", url: (u: string) => `https://cors-proxy.htmldriven.com/?url=${encodeURIComponent(u)}`, type: "text" },
                 { name: "FuckCORS", url: (u: string) => `https://api.fuckcors.com/proxy?url=${encodeURIComponent(u)}`, type: "text" },
                 { name: "ThingProxy", url: (u: string) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}`, type: "text" },
-                { name: "AllOrigins (JSON)", url: (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`, type: "json" },
                 { name: "Direct", url: (u: string) => u, type: "text" }
             ];
 
             let xml = "";
             const tryFormats = ["json3", "srv1", "srv2"];
-
-            // GIGA-MESH: Try multiple tracks and formats across all proxies
-            const availableTracks = tracks.slice(0, 3); // Try top 3 tracks (usually English, then Auto, etc.)
+            const availableTracks = tracks.slice(0, 3);
 
             for (const track of availableTracks) {
                 for (const fmt of tryFormats) {
+                    if (xml) break;
+
                     let currentUrl = track.baseUrl;
                     if (!currentUrl.includes("fmt=")) {
                         currentUrl += `&fmt=${fmt}`;
@@ -135,11 +134,12 @@ export default function YouTubeSummarizer() {
                         currentUrl = currentUrl.replace(/fmt=[^&]+/, `fmt=${fmt}`);
                     }
 
-                    setStatus(`Bypassing ${track.languageCode || "default"} (${fmt})...`);
+                    setStatus(`Bypassing ${track.languageCode || "default"} (${fmt}) [Parallel Mode]...`);
 
-                    for (const proxy of gigaMeshProxies) {
-                        try {
-                            const res = await fetch(proxy.url(currentUrl));
+                    // Hyper-Parallel Racing: Fire all proxies at once for this format
+                    try {
+                        const results = await Promise.allSettled(gigaMeshProxies.map(async (proxy) => {
+                            const res = await fetch(proxy.url(currentUrl), { signal: AbortSignal.timeout(8000) });
                             let content = "";
                             if (proxy.type === "json") {
                                 const data = await res.json();
@@ -150,19 +150,24 @@ export default function YouTubeSummarizer() {
 
                             if (content && !isBlockResponse(content, true)) {
                                 if (content.includes("<text") || content.includes("<p ") || content.includes("events") || content.includes("utf8")) {
-                                    xml = content;
-                                    break;
+                                    return content;
                                 }
                             }
-                        } catch (e) { /* next proxy */ }
-                    }
-                    if (xml) break;
+                            throw new Error("Invalid content");
+                        }));
+
+                        const success = results.find(r => r.status === "fulfilled" && r.value) as PromiseFulfilledResult<string> | undefined;
+                        if (success) {
+                            xml = success.value;
+                            break;
+                        }
+                    } catch (e) { /* next format */ }
                 }
                 if (xml) break;
             }
 
             if (!xml) {
-                throw new Error("Giga-Mesh exhausted. YouTube has strictly blocked 40+ bypass attempts. This video might be protected or requires localized access. Please use Manual Mode.");
+                throw new Error("Giga-Mesh exhausted. YouTube is strictly blocking this video across all 40+ bypass paths. Please use Manual Mode.");
             }
 
 
