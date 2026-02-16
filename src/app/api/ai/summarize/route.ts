@@ -26,7 +26,7 @@ const BROWSER_HEADERS = {
 async function fetchWithFailover(videoId: string) {
     let lastError: any = null;
 
-    // Method 1: youtube-transcript (Standard)
+    // Method 1: youtube-transcript (Standard) - FAST
     try {
         console.log("Method 1: Attempting youtube-transcript...");
         const transcript = await YoutubeTranscript.fetchTranscript(videoId);
@@ -36,35 +36,41 @@ async function fetchWithFailover(videoId: string) {
         console.warn("Method 1 failed:", e.message);
     }
 
-    // Method 2: YouTubei.js (InnerTube - Mobile App Emulation)
-    try {
-        console.log("Method 2: Attempting YouTubei.js (InnerTube)...");
-        const { Innertube } = await import("youtubei.js");
-        const youtube = await Innertube.create();
-        const info = await youtube.getInfo(videoId);
-        const transcriptData = await info.getTranscript();
+    // Method 2: Skip slow Innertube on Vercel if Method 1 fails with block
+    // Innertube.create() can take 5-10s which risks Vercel timeout
+    const isVercel = process.env.VERCEL === '1';
+    if (!isVercel) {
+        try {
+            console.log("Method 2: Attempting YouTubei.js (InnerTube)...");
+            const { Innertube } = await import("youtubei.js");
+            const youtube = await Innertube.create();
+            const info = await youtube.getInfo(videoId);
+            const transcriptData = await info.getTranscript();
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const segments = (transcriptData as any).transcript.content.body.initial_segments;
-        if (segments) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const text = segments.map((s: any) => s.snippet.text).join(" ");
-            return text.substring(0, 25000);
+            const segments = (transcriptData as any).transcript.content.body.initial_segments;
+            if (segments) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const text = segments.map((s: any) => s.snippet.text).join(" ");
+                return text.substring(0, 25000);
+            }
+        } catch (e: any) {
+            lastError = e;
+            console.warn("Method 2 failed:", e.message);
         }
-    } catch (e: any) {
-        lastError = e;
-        console.warn("Method 2 failed:", e.message);
+    } else {
+        console.log("Method 2: Skipping slow InnerTube on Vercel to allow faster client-side bypass.");
     }
 
-    // Method 3: Manual Fetch with Browser Headers (Last Resort Server-Side)
+    // Method 3: Manual Fetch with Browser Headers (Last Resort Server-Side) - FASTish
     try {
         console.log("Method 3: Attempting raw fetch with browser headers...");
         const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-            headers: BROWSER_HEADERS
+            headers: BROWSER_HEADERS,
+            signal: AbortSignal.timeout(3000) // 3s timeout
         });
         const html = await response.text();
-        // This is a very basic fallback, extraction from HTML is complex but we catch the potential block here
-        if (html.includes("consent.youtube.com") || html.includes("Service Unavailable")) {
+        if (html.includes("consent.youtube.com") || html.includes("Service Unavailable") || html.includes("action=\"https://www.google.com/sorry/index\"")) {
             throw new Error("YouTube blocked the server IP (IP block detected).");
         }
     } catch (e: any) {
