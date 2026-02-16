@@ -19,34 +19,57 @@ export default function YouTubeSummarizer() {
 
     const fetchTranscriptClient = async (videoId: string) => {
         try {
-            // We use a simple fetch to a reliable third-party mirror or direct fetch if possible
-            // Since direct fetch to YouTube is CORS-blocked, we try a proxy or a known open endpoint
-            // For this specific fix, we'll try to fetch from a public mirror if the server fails
+            setStatus("Bypassing server block (Step 1/2)...");
             const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`);
+            if (!res.ok) throw new Error("CORS proxy rejected the request.");
+
             const data = await res.json();
             const html = data.contents;
+            if (!html) throw new Error("Empty response from proxy.");
 
-            // Basic extraction logic from the HTML page (captions JSON)
-            const captionsMatch = html.match(/"captions":(\{.*?\})/);
-            if (!captionsMatch) throw new Error("No captions found in video metadata");
+            setStatus("Bypassing server block (Step 2/2)...");
 
-            const captions = JSON.parse(captionsMatch[1]);
-            const baseUrl = captions.playerCaptionsTracklistRenderer.captionTracks[0].baseUrl;
+            // Try extracting from ytInitialPlayerResponse
+            const playerResponseMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
+            let captions;
 
+            if (playerResponseMatch) {
+                try {
+                    const playerResponse = JSON.parse(playerResponseMatch[1]);
+                    captions = playerResponse.captions;
+                } catch (e) {
+                    console.warn("Player response parse failed");
+                }
+            }
+
+            if (!captions) {
+                const captionsMatch = html.match(/"captions":(\{.*?\})/);
+                if (captionsMatch) {
+                    captions = JSON.parse(captionsMatch[1]);
+                }
+            }
+
+            if (!captions || !captions.playerCaptionsTracklistRenderer) {
+                throw new Error("This video doesn't seem to have a transcript available.");
+            }
+
+            const tracks = captions.playerCaptionsTracklistRenderer.captionTracks;
+            if (!tracks || tracks.length === 0) throw new Error("No caption tracks found.");
+
+            const baseUrl = tracks[0].baseUrl;
             const transcriptRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(baseUrl)}`);
             const transcriptData = await transcriptRes.json();
             const xml = transcriptData.contents;
 
-            // Parse XML text content
             const textNodes = xml.match(/<text.*?>([\s\S]*?)<\/text>/g);
-            if (!textNodes) throw new Error("Could not parse transcript XML");
+            if (!textNodes) throw new Error("Transcription data is empty.");
 
             return textNodes.map((node: string) => {
                 return node.replace(/<text.*?>/, "").replace(/<\/text>/, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
             }).join(" ");
-        } catch (e) {
+        } catch (e: any) {
             console.error("Client-side fetch failed:", e);
-            throw new Error("Could not fetch transcript even from browser. Please use Manual Mode.");
+            throw new Error(`Auto-fix failed: ${e.message}`);
         }
     };
 
@@ -55,8 +78,10 @@ export default function YouTubeSummarizer() {
         setLoading(true);
         setError("");
         setSummary("");
+        setStatus("Starting...");
 
         try {
+            setStatus("Preparing transcript...");
             let res = await fetch("/api/ai/summarize", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -70,10 +95,10 @@ export default function YouTubeSummarizer() {
 
             // Check for IP Block and attempt Client-Side Failover
             if (res.status === 403 && data.isIPBlock && mode === "url") {
-                console.log("Server IP Block detected. Attempting client-side extraction...");
+                setStatus("IP Blocked. Applying auto-bypass...");
                 try {
                     const clientTranscript = await fetchTranscriptClient(data.videoId);
-                    // Retry with the transcript text we just fetched
+                    setStatus("Analyzing video content...");
                     res = await fetch("/api/ai/summarize", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -89,12 +114,14 @@ export default function YouTubeSummarizer() {
                 throw new Error(data.error || "Failed to summarize video");
             }
 
+            setStatus("Finalizing summary...");
             setSummary(data.summary);
         } catch (err: any) {
             console.error(err);
             setError(err.message);
         } finally {
             setLoading(false);
+            setStatus("");
         }
     };
 
