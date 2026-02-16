@@ -20,9 +20,11 @@ export default function DocumentQA() {
     const [querying, setQuerying] = useState(false);
 
     const fetchDocuments = useCallback(async () => {
-        const url = "/api/v1-docs";
+        const url = `/api/v1-docs?t=${Date.now()}`;
         try {
-            const res = await fetch(url);
+            const res = await fetch(url, {
+                headers: { "x-diagnostic": "v1-list-request" }
+            });
             if (res.ok) {
                 const data = await res.json();
                 setDocuments(data);
@@ -46,7 +48,7 @@ export default function DocumentQA() {
     const handleUpload = async () => {
         if (!file) return;
         setUploading(true);
-        const url = "/api/v1-docs";
+        const url = `/api/v1-docs?t=${Date.now()}`;
 
         const formData = new FormData();
         formData.append("file", file);
@@ -55,6 +57,7 @@ export default function DocumentQA() {
             const res = await fetch(url, {
                 method: "POST",
                 body: formData,
+                headers: { "x-diagnostic": "v1-upload-request" }
             });
             if (res.ok) {
                 toast.success("Document uploaded successfully");
@@ -82,12 +85,15 @@ export default function DocumentQA() {
         if (!selectedDocId || !question.trim()) return;
         setQuerying(true);
         setAnswer("");
-        const url = "/api/v1-query";
+        const url = `/api/v1-query?t=${Date.now()}`;
 
         try {
             const res = await fetch(url, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-diagnostic": "v1-query-request"
+                },
                 body: JSON.stringify({ documentId: selectedDocId, question }),
             });
 
