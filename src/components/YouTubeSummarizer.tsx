@@ -101,12 +101,37 @@ export default function YouTubeSummarizer() {
 
             if (!xml) throw new Error("Could not download transcript data.");
 
-            const textNodes = xml.match(/<text.*?>([\s\S]*?)<\/text>/g);
-            if (!textNodes) throw new Error("Transcription data is empty.");
+            setStatus("Parsing transcript...");
+            const parser = new DOMParser();
 
-            return textNodes.map((node: string) => {
-                return node.replace(/<text.*?>/, "").replace(/<\/text>/, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-            }).join(" ");
+            // Ensure we have a string to parse
+            const xmlString = typeof xml === 'string' ? xml : JSON.stringify(xml);
+            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+            const textElements = xmlDoc.getElementsByTagName("text");
+
+            if (textElements.length === 0) {
+                // Check if it's JSON format instead (sometimes happens)
+                try {
+                    const jsonData = JSON.parse(xmlString);
+                    if (jsonData.events) {
+                        return jsonData.events
+                            .map((e: any) => e.segs ? e.segs.map((s: any) => s.utf8).join("") : "")
+                            .join(" ");
+                    }
+                } catch (e) { /* not json */ }
+                throw new Error("Bypass succeeded but the transcript data was empty. This usually happens if the video has restricted captions.");
+            }
+
+            return Array.from(textElements)
+                .map(el => {
+                    return (el.textContent || "")
+                        .replace(/&amp;/g, "&")
+                        .replace(/&lt;/g, "<")
+                        .replace(/&gt;/g, ">")
+                        .replace(/&#39;/g, "'")
+                        .replace(/&quot;/g, '"');
+                })
+                .join(" ");
         } catch (e: any) {
             console.error("Extraction failed:", e);
             throw new Error(`Auto-fix failed: ${e.message}`);
