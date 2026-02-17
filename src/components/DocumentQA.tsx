@@ -33,6 +33,7 @@ export default function DocumentQA() {
     const [question, setQuestion] = useState("");
     const [answer, setAnswer] = useState("");
     const [querying, setQuerying] = useState(false);
+    const [deepSearch, setDeepSearch] = useState(false);
 
     const fetchWorkspaces = useCallback(async () => {
         try {
@@ -132,8 +133,10 @@ export default function DocumentQA() {
         setQuerying(true);
         setAnswer("");
 
+        const endpoint = deepSearch ? "/api/v1-deep-search" : "/api/v1-query";
+
         try {
-            const res = await fetch("/api/v1-query", {
+            const res = await fetch(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -145,6 +148,9 @@ export default function DocumentQA() {
             if (res.ok) {
                 const data = await res.json();
                 setAnswer(data.answer);
+                if (data.hasWebResults) {
+                    toast.info("Web results integrated");
+                }
             } else {
                 const data = await res.json();
                 toast.error(data.error || "Query failed");
@@ -308,18 +314,33 @@ export default function DocumentQA() {
 
                     {/* Q&A Interface */}
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col xl:col-span-3">
-                        <div className="p-5 border-b border-slate-100">
+                        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                             <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-900">
                                 <Send className="w-5 h-5 text-indigo-600" />
                                 Workspace Intelligence
                             </h2>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${deepSearch ? "text-indigo-600" : "text-slate-400"}`}>
+                                    Deep Search
+                                </span>
+                                <button
+                                    onClick={() => setDeepSearch(!deepSearch)}
+                                    className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${deepSearch ? "bg-indigo-600" : "bg-slate-200"
+                                        }`}
+                                >
+                                    <span
+                                        className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${deepSearch ? "translate-x-6" : "translate-x-1"
+                                            }`}
+                                    />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="p-6 flex flex-col gap-6 flex-1">
                             <div className="relative">
                                 <input
                                     type="text"
-                                    placeholder={selectedWorkspaceId ? "Ask a question across all documents..." : "Select a workspace to begin"}
+                                    placeholder={selectedWorkspaceId ? (deepSearch ? "Searching the web and documents..." : "Ask a question across all documents...") : "Select a workspace to begin"}
                                     value={question}
                                     onChange={(e) => setQuestion(e.target.value)}
                                     disabled={!selectedWorkspaceId || querying}
