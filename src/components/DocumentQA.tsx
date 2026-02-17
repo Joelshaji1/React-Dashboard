@@ -251,7 +251,7 @@ export default function DocumentQA() {
                     <div className="flex flex-col sm:flex-row items-center gap-4">
                         <input
                             type="file"
-                            accept=".pdf,.txt"
+                            accept=".pdf,.txt,.docx,.doc,.xlsx,.xls,.csv,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/markdown"
                             onChange={(e) => setFile(e.target.files?.[0] || null)}
                             className="block w-full text-sm text-slate-500
                                 file:mr-4 file:py-2 file:px-4
@@ -268,9 +268,13 @@ export default function DocumentQA() {
                             {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload"}
                         </button>
                     </div>
-                    {!selectedWorkspaceId && (
-                        <p className="mt-2 text-xs text-amber-600 font-medium">Please select a workspace first</p>
-                    )}
+                    <div className="mt-2 flex items-center justify-between">
+                        {!selectedWorkspaceId ? (
+                            <p className="text-xs text-amber-600 font-medium font-bold">Please select a workspace first</p>
+                        ) : (
+                            <p className="text-[10px] text-slate-400 font-bold">Supported: PDF, Word, Excel, TXT, MD, CSV</p>
+                        )}
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">

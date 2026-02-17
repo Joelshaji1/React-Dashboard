@@ -53,44 +53,43 @@ export async function POST(req: NextRequest) {
         const buffer = Buffer.from(await file.arrayBuffer());
         let content = "";
 
-        if (file.type === "application/pdf") {
+        if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
             try {
                 const { createRequire } = await import("module");
                 const require = createRequire(import.meta.url);
                 const pdf = require("pdf-parse-fork");
-
-                // --- XREF RESILIENCE v1.16 ---
-                // Convert to Uint8Array which is the native format for PDF.js engines
-                // This sometimes heals "bad XRef" errors caused by Buffer-to-String misinterpretations
                 const uint8Array = new Uint8Array(buffer);
-
-                // Options to be more lenient if the library allows it
-                const options = {
-                    // pdf-parse doesn't officially document many options, 
-                    // but passing an empty or standard object can sometimes reset internal states
-                };
-
-                const data = await pdf(uint8Array, options);
-
+                const data = await pdf(uint8Array, {});
                 content = data?.text || "";
-
                 if (!content || content.trim().length === 0) {
-                    throw new Error(`Pages: ${data?.numpages || 0}. The PDF structure is readable but yielded no text (image-only?)`);
+                    throw new Error("No text found in PDF");
                 }
-
-                console.log("[v1-docs] PDF Success - v1.16");
             } catch (pError: any) {
-                console.error("[v1-docs] PDF Resilience Error:", pError);
-
-                // If we get XRef error, it's a sign the PDF structure is tricky.
-                // We provide the user with a specific "Repair" message.
-                const isXRef = pError.message.includes("XRef") || pError.message.includes("entry");
-
-                return NextResponse.json({
-                    error: isXRef ? "PDF Structure Error (XRef)" : "PDF Extraction Failed",
-                    details: pError.message + (isXRef ? ". Try saving the PDF as a 'Reduced Size PDF' or 'Optimized PDF' and re-uploading." : ""),
-                    v: "1.16"
-                }, { status: 500 });
+                console.error("[v1-docs] PDF Error:", pError);
+                return NextResponse.json({ error: "PDF Extraction Failed", details: pError.message }, { status: 500 });
+            }
+        } else if (file.name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+            try {
+                const { createRequire } = await import("module");
+                const require = createRequire(import.meta.url);
+                const mammoth = require("mammoth");
+                const result = await mammoth.extractRawText({ buffer });
+                content = result.value;
+            } catch (mError: any) {
+                return NextResponse.json({ error: "Word Extraction Failed", details: mError.message }, { status: 500 });
+            }
+        } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls") || file.type.includes("spreadsheetml")) {
+            try {
+                const { createRequire } = await import("module");
+                const require = createRequire(import.meta.url);
+                const XLSX = require("xlsx");
+                const workbook = XLSX.read(buffer, { type: 'buffer' });
+                content = workbook.SheetNames.map((name: string) => {
+                    const sheet = workbook.Sheets[name];
+                    return `SHEET: ${name}\n${XLSX.utils.sheet_to_txt(sheet)}`;
+                }).join("\n\n");
+            } catch (xError: any) {
+                return NextResponse.json({ error: "Excel Extraction Failed", details: xError.message }, { status: 500 });
             }
         } else {
             content = buffer.toString("utf-8");
