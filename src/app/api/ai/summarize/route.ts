@@ -152,6 +152,9 @@ async function fetchWithFailover(videoId: string) {
         console.warn("Method 4 failed:", e.message);
     }
 
+    if (lastError && (lastError as any).diagnostics) {
+        throw lastError;
+    }
     throw lastError || new Error("Failed to fetch transcript from all server-side methods.");
 }
 
