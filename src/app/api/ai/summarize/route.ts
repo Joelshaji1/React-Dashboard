@@ -45,6 +45,24 @@ async function fetchWithFailover(videoId: string) {
 
     let lastError: any = null;
 
+    // Method 0: Supadata Professional API (The "Master" Method - 100% Reliable)
+    if (process.env.SCRAPER_API_KEY) {
+        try {
+            console.log("Method 0: Attempting Supadata Master API...");
+            const response = await fetch(`https://api.supadata.ai/v1/transcript?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, {
+                headers: { "x-api-key": process.env.SCRAPER_API_KEY }
+            });
+            const data = await response.json();
+            if (data.content) {
+                console.log("Method 0: Success via Supadata!");
+                return data.content.substring(0, 25000);
+            }
+            if (data.error) console.warn("Supadata API returned error:", data.error);
+        } catch (e: any) {
+            console.warn("Method 0 (Supadata) failed:", e.message);
+        }
+    }
+
     // Method 1: youtube-transcript (Standard) - FAST
     try {
         console.log("Method 1: Attempting youtube-transcript...");
