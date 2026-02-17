@@ -60,15 +60,22 @@ async function fetchWithFailover(videoId: string) {
             console.log(`Supadata Status: ${response.status} ${response.statusText}`);
             const data = await response.json();
 
-            let finalTranscript = data.content || data.text || (Array.isArray(data.transcript) ? data.transcript.map((t: any) => t.text).join(" ") : null);
+            // Robust extraction: Handle both flat strings and arrays of objects (common in professional APIs)
+            let finalTranscript = "";
+            const rawContent = data.content || data.text || data.transcript || "";
 
-            // Robust type check: Ensure finalTranscript is a string before trimming
-            if (finalTranscript && typeof finalTranscript === "string" && finalTranscript.trim().length > 100) {
+            if (typeof rawContent === "string") {
+                finalTranscript = rawContent;
+            } else if (Array.isArray(rawContent)) {
+                finalTranscript = rawContent.map((item: any) => item.text || item.content || "").join(" ");
+            }
+
+            if (finalTranscript && finalTranscript.trim().length > 100) {
                 console.log("Method 0: Success via Supadata! Length:", finalTranscript.length);
                 return finalTranscript.substring(0, 25000);
             }
 
-            const errorMsg = `Supadata ${response.status}: ${data.error || "No valid string content found"}`;
+            const errorMsg = `Supadata ${response.status}: No valid transcript content in response`;
             console.warn("Method 0 (Supadata) failed:", errorMsg);
 
             // IMMEDIATELY throw if we have diagnostics to stop backups from hiding the real issue
