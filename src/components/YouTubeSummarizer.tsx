@@ -42,7 +42,10 @@ export default function YouTubeSummarizer() {
                     let msg = "YouTube is strictly blocking this video.";
                     if (data.keyCheck) msg += `\n[Key Check: ${data.keyCheck}]`;
                     if (data.diagnostics && data.diagnostics !== "No extra info provided.") {
-                        msg += `\n[Suppadata Error: ${data.diagnostics}]`;
+                        msg += `\n[Supadata Error: ${data.diagnostics}]`;
+                    }
+                    if (data.methodLog && data.methodLog.length > 0) {
+                        msg += `\n\n[Transcription Audit]:\n` + data.methodLog.join("\n");
                     }
                     throw new Error(msg);
                 }
@@ -126,7 +129,7 @@ export default function YouTubeSummarizer() {
                     <div className="mt-6 bg-red-900/20 border border-red-800 rounded-xl p-4 flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-red-400 mt-0.5" />
                         <div className="flex-1">
-                            <p className="text-red-400 text-sm font-medium">{error}</p>
+                            <p className="text-red-400 text-sm font-medium whitespace-pre-line">{error}</p>
 
                             {error.includes("Giga-Mesh exhausted") || error.includes("strictly blocking") ? (
                                 <div className="mt-3 p-3 bg-red-900/30 rounded-lg border border-red-700/50">

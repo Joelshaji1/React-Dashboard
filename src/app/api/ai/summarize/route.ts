@@ -44,6 +44,7 @@ async function fetchWithFailover(videoId: string) {
     }
 
     let lastError: any = null;
+    const methodLog: string[] = [];
 
     // Method 0: Supadata Professional API (The "Master" Method - 100% Reliable)
     const apiKey = process.env.SCRAPER_API_KEY || process.env.SUPADATA_API_KEY;
@@ -74,8 +75,14 @@ async function fetchWithFailover(videoId: string) {
             (diagError as any).diagnostics = JSON.stringify(data);
             throw diagError;
         } catch (e: any) {
-            console.warn("Method 0 (Supadata) failure block:", e.message);
-            if (e.diagnostics) throw e; // Bubble up diagnostic errors immediately
+            const msg = `Method 0 (Supadata) error: ${e.message}`;
+            console.warn(msg);
+            methodLog.push(msg);
+            // If it's a diagnostic error we just created, rethrow it
+            if (e.diagnostics) {
+                (e as any).methodLog = methodLog;
+                throw e;
+            }
             lastError = e;
         }
     } else {
@@ -89,7 +96,9 @@ async function fetchWithFailover(videoId: string) {
         return transcript.map(t => t.text).join(" ").substring(0, 25000);
     } catch (e: any) {
         lastError = e;
-        console.warn("Method 1 failed:", e.message);
+        const msg = `Method 1 (Node) error: ${e.message}`;
+        console.warn(msg);
+        methodLog.push(msg);
     }
 
     // Method 2: YouTubei.js (InnerTube) - Reliable but heavier
@@ -110,7 +119,9 @@ async function fetchWithFailover(videoId: string) {
         }
     } catch (e: any) {
         lastError = e;
-        console.warn("Method 2 failed:", e.message);
+        const msg = `Method 2 (InnerTube) error: ${e.message}`;
+        console.warn(msg);
+        methodLog.push(msg);
     }
 
     // Method 3: Server-Side Proxy Bypass (Fast Failover)
@@ -133,7 +144,9 @@ async function fetchWithFailover(videoId: string) {
                 break;
             }
         } catch (e: any) {
-            console.warn(`Method 3 proxy failed:`, e.message);
+            const msg = `Method 3 (Proxy) error: ${e.message}`;
+            console.warn(msg);
+            methodLog.push(msg);
         }
     }
 
@@ -150,7 +163,13 @@ async function fetchWithFailover(videoId: string) {
         if (result.error) throw new Error(result.error);
     } catch (e: any) {
         lastError = e;
-        console.warn("Method 4 failed:", e.message);
+        const msg = `Method 4 (Giga) error: ${e.message}`;
+        console.warn(msg);
+        methodLog.push(msg);
+    }
+
+    if (lastError) {
+        (lastError as any).methodLog = methodLog;
     }
 
     throw lastError || new Error("Failed to fetch transcript from all server-side methods.");
@@ -196,6 +215,7 @@ export async function POST(req: Request) {
                     {
                         error: `YouTube IP Block: ${error.message}`,
                         diagnostics: (error as any).diagnostics || "No extra info provided.",
+                        methodLog: (error as any).methodLog || [],
                         keyCheck: process.env.SCRAPER_API_KEY ? "Present (Starts with: " + process.env.SCRAPER_API_KEY.substring(0, 4) + ")" : "MISSING in Environment",
                         isIPBlock: true,
                         videoId: videoId
