@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
         let context = "";
         let sourceNames = "";
 
+        // 1. Build context with per-document logging
         if (workspaceId) {
             // Multi-document query
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const docs = await (prisma as any).document.findMany({
                 where: { workspaceId, userId: session.user.id }
             });
@@ -49,12 +49,14 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "No documents found in this workspace" }, { status: 404 });
             }
 
-            // Combine contents with document delimiters for citation context
-            context = docs.map((d: any) => `DOCUMENT: ${d.name}\nCONTENT:\n${d.content}`).join("\n\n---\n\n");
+            console.log(`[v1-query] Analyzing ${docs.length} documents...`);
+            context = docs.map((d: any) => {
+                console.log(` - Document: ${d.name} (${d.content?.length || 0} chars)`);
+                return `DOCUMENT: ${d.name}\nCONTENT:\n${d.content}`;
+            }).join("\n\n---\n\n");
             sourceNames = docs.map((d: any) => d.name).join(", ");
         } else {
             // Single document query (legacy support)
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const document = await (prisma as any).document.findUnique({
                 where: { id: documentId },
             });
@@ -63,13 +65,14 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "Document not found or forbidden" }, { status: 404 });
             }
 
+            console.log(`[v1-query] Analyzing single document: ${document.name} (${document.content?.length || 0} chars)`);
             context = `DOCUMENT: ${document.name}\nCONTENT:\n${document.content}`;
             sourceNames = document.name;
         }
 
-        // Truncate context to fit within model limits (approx 80k chars)
-        const truncatedContext = context.substring(0, 80000);
-        console.log(`[v1-query] Context size: ${context.length}, Truncated to: ${truncatedContext.length}`);
+        // 2. Truncate context to fit within model limits (approx 250k chars)
+        const truncatedContext = context.substring(0, 250000);
+        console.log(`[v1-query] Total context size: ${context.length}, Truncated to: ${truncatedContext.length}`);
 
         const models = [
             "liquid/lfm-2.5-1.2b-thinking:free",
@@ -87,16 +90,19 @@ export async function POST(req: NextRequest) {
                     messages: [
                         {
                             role: "system",
-                            content: `You are a Workspace Intelligence AI. Your goal is to analyze a COLLECTION of documents.
-                            - ALWAYS synthesize information across ALL provided documents.
-                            - If a question refers to multiple parts (like "all units"), scan all documents for relevant sections.
-                            - ALWAYS cite which document it came from using [Source: filename.pdf].
-                            - If documents conflict, mention the discrepancy.
+                            content: `You are a Workspace Intelligence AI. Your task is to analyze the provided documents and explain them comprehensively.
+                            
+                            CRITICAL INSTRUCTIONS:
+                            1. You MUST analyze EVERY document listed in the "Documents Available" section.
+                            2. If asked to "explain all units" or similar, provide a detailed summary for EACH individual unit/document.
+                            3. ALWAYS cite which document the information came from using [Source: filename.pdf].
+                            4. Do NOT generalize if specific details are available in the documents.
+                            
                             Documents Available: ${sourceNames}`
                         },
                         {
                             role: "user",
-                            content: `Context:\n${truncatedContext}\n\nQuestion: ${question}`
+                            content: `Question: ${question}\n\nContext:\n${truncatedContext}`
                         }
                     ],
                 });

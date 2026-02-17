@@ -58,22 +58,25 @@ export async function POST(req: NextRequest) {
         }
 
         // 2. Fetch Workspace Documents
-        console.log("[Deep Search] Fetching docs for workspace:", workspaceId);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        console.log(`[Deep Search] Fetching docs for workspace: ${workspaceId}`);
         const docs = await (prisma as any).document.findMany({
             where: { workspaceId, userId: session.user.id }
         });
 
-        const docContext = docs.map((d: any) => `DOCUMENT: ${d.name}\nCONTENT:\n${d.content}`).join("\n\n---\n\n");
+        console.log(`[Deep Search] Analyzing ${docs.length} documents...`);
+        const docContext = docs.map((d: any) => {
+            console.log(` - Document: ${d.name} (${d.content?.length || 0} chars)`);
+            return `DOCUMENT: ${d.name}\nCONTENT:\n${d.content}`;
+        }).join("\n\n---\n\n");
         const docNames = docs.map((d: any) => d.name).join(", ");
 
         if (!docContext && !webContext) {
             return NextResponse.json({ error: "No context found (docs or web) to answer this question" }, { status: 404 });
         }
 
-        // 3. AI Synthesis (with Robust Retries)
+        // 3. AI Synthesis (with Robust Retries & Massive Window)
         console.log("[Deep Search] Initializing AI synthesis...");
-        // Prioritize docs by putting them first and using a large buffer
+        // Prioritize docs by putting them first and using a large buffer (250k chars)
         const combinedContext = `
 DOCUMENTS CONTEXT (SEARCH THESE FIRST):
 ${docContext}
@@ -82,7 +85,7 @@ ${docContext}
 
 WEB RESEARCH CONTEXT (SUPPLEMENTAL):
 ${webContext}
-        `.substring(0, 80000);
+        `.substring(0, 250000);
 
         const models = [
             "liquid/lfm-2.5-1.2b-thinking:free",
@@ -101,12 +104,15 @@ ${webContext}
                     messages: [
                         {
                             role: "system",
-                            content: `You are a Deep Search Intelligence AI. Your goal is to analyze a COLLECTION of uploaded documents AND web research.
-                            - ALWAYS synthesize information across ALL provided documents.
-                            - If a question refers to multiple parts (like "all units"), scan all documents for relevant sections.
-                            - If info comes from a document, cite [Document: filename.pdf].
-                            - If info comes from the web, cite [Web: website.com].
-                            - Prioritize document information over web research unless web info is significantly more recent.
+                            content: `You are a Deep Search Intelligence AI. Your task is to analyze BOTH the uploaded documents AND web research.
+                            
+                            CRITICAL INSTRUCTIONS:
+                            1. You MUST analyze EVERY document listed in the "Documents Available" section.
+                            2. If asked to "explain all units" or similar, provide a detailed summary for EACH individual unit/document from your local files.
+                            3. Use web research ONLY as supplemental information. Your primary source is the uploaded documents.
+                            4. ALWAYS cite sources: [Document: filename.pdf] for local files, and [Web: website.com] for web research.
+                            5. Do NOT generalize if specific details are available in the documents.
+                            
                             Documents Available: ${docNames || "None uploaded yet"}`
                         },
                         {
