@@ -153,7 +153,7 @@ export default function DocumentQA() {
                 }
             } else {
                 const data = await res.json();
-                toast.error(data.error || "Query failed");
+                toast.error(`${data.error}: ${data.details || "Check console"}`);
             }
         } catch (error) {
             toast.error("Network error");
