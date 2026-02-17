@@ -1,16 +1,31 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Upload, FileText, Send, Loader2, Trash2 } from "lucide-react";
+import { Upload, FileText, Send, Loader2, Trash2, FolderPlus, FolderOpen, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+
+interface Workspace {
+    id: string;
+    name: string;
+    createdAt: string;
+    _count?: {
+        documents: number;
+    };
+}
 
 interface Document {
     id: string;
     name: string;
     createdAt: string;
+    workspaceId?: string | null;
 }
 
 export default function DocumentQA() {
+    const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+    const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+    const [newWorkspaceName, setNewWorkspaceName] = useState("");
+    const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
+
     const [file, setFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
     const [documents, setDocuments] = useState<Document[]>([]);
@@ -19,249 +34,327 @@ export default function DocumentQA() {
     const [answer, setAnswer] = useState("");
     const [querying, setQuerying] = useState(false);
 
-    const fetchDocuments = useCallback(async () => {
-        const url = `/api/v1-docs?t=${Date.now()}`;
+    const fetchWorkspaces = useCallback(async () => {
         try {
-            const res = await fetch(url, {
-                headers: { "x-diagnostic": "v1-list-request" }
-            });
+            const res = await fetch("/api/v1-workspaces");
+            if (res.ok) {
+                const data = await res.json();
+                setWorkspaces(data);
+                if (data.length > 0 && !selectedWorkspaceId) {
+                    setSelectedWorkspaceId(data[0].id);
+                }
+            }
+        } catch (error) {
+            console.error("Error fetching workspaces:", error);
+        }
+    }, [selectedWorkspaceId]);
+
+    const fetchDocuments = useCallback(async () => {
+        if (!selectedWorkspaceId) {
+            setDocuments([]);
+            return;
+        }
+        const url = `/api/v1-docs?workspaceId=${selectedWorkspaceId}&t=${Date.now()}`;
+        try {
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 setDocuments(data);
-                if (data.length > 0 && !selectedDocId) {
-                    setSelectedDocId(data[0].id);
-                }
-            } else {
-                let errorDetails = "";
-                try {
-                    const text = await res.text();
-                    try {
-                        const data = JSON.parse(text);
-                        errorDetails = data.details || data.error || text;
-                    } catch {
-                        errorDetails = text.slice(0, 100);
-                    }
-                } catch {
-                    errorDetails = res.statusText;
-                }
-                toast.error(`Fetch failed: ${res.status} ${errorDetails}`);
             }
         } catch (error) {
-            const err = error as Error;
-            console.error("Error fetching documents:", err);
-            toast.error(`Network error: ${err.message}`);
+            console.error("Error fetching documents:", error);
         }
-    }, [selectedDocId]);
+    }, [selectedWorkspaceId]);
+
+    useEffect(() => {
+        fetchWorkspaces();
+    }, [fetchWorkspaces]);
 
     useEffect(() => {
         fetchDocuments();
     }, [fetchDocuments]);
 
-    const handleUpload = async () => {
-        if (!file) return;
-        setUploading(true);
-        const url = `/api/v1-docs?t=${Date.now()}`;
-        const formData = new FormData();
-        formData.append("file", file);
-
+    const handleCreateWorkspace = async () => {
+        if (!newWorkspaceName.trim()) return;
+        setIsCreatingWorkspace(true);
         try {
-            const res = await fetch(url, {
+            const res = await fetch("/api/v1-workspaces", {
                 method: "POST",
-                body: formData,
-                headers: { "x-diagnostic": "v1-upload-request" }
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: newWorkspaceName }),
             });
             if (res.ok) {
-                toast.success("Document uploaded successfully");
-                setFile(null);
-                fetchDocuments();
+                const data = await res.json();
+                toast.success("Workspace created");
+                setNewWorkspaceName("");
+                setSelectedWorkspaceId(data.id);
+                fetchWorkspaces();
             } else {
-                let errorMessage = `Upload failed: Status ${res.status}`;
-                try {
-                    const text = await res.text();
-                    try {
-                        const data = JSON.parse(text);
-                        errorMessage = data.details || data.error || text;
-                    } catch {
-                        errorMessage = `HTML Error: ${text.slice(0, 100)}`;
-                    }
-                } catch {
-                    errorMessage = `Server error ${res.status}: ${res.statusText}`;
-                }
-                toast.error(errorMessage);
+                toast.error("Failed to create workspace");
             }
         } catch (error) {
-            const err = error as Error;
-            toast.error(`Network error: ${err.message}`);
+            toast.error("Network error");
+        } finally {
+            setIsCreatingWorkspace(false);
+        }
+    };
+
+    const handleUpload = async () => {
+        if (!file || !selectedWorkspaceId) return;
+        setUploading(true);
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("workspaceId", selectedWorkspaceId);
+
+        try {
+            const res = await fetch("/api/v1-docs", {
+                method: "POST",
+                body: formData,
+            });
+            if (res.ok) {
+                toast.success("Document added to workspace");
+                setFile(null);
+                fetchDocuments();
+                fetchWorkspaces(); // Update document count
+            } else {
+                const data = await res.json();
+                toast.error(data.error || "Upload failed");
+            }
+        } catch (error) {
+            toast.error("Network error");
         } finally {
             setUploading(false);
         }
     };
 
     const handleQuery = async () => {
-        if (!selectedDocId || !question.trim()) return;
+        if (!selectedWorkspaceId || !question.trim()) return;
         setQuerying(true);
         setAnswer("");
-        const url = `/api/v1-query?t=${Date.now()}`;
 
         try {
-            const res = await fetch(url, {
+            const res = await fetch("/api/v1-query", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-diagnostic": "v1-query-request"
-                },
-                body: JSON.stringify({ documentId: selectedDocId, question }),
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId: selectedWorkspaceId,
+                    question
+                }),
             });
 
             if (res.ok) {
                 const data = await res.json();
                 setAnswer(data.answer);
             } else {
-                let errorMsg = `Query failed: Status ${res.status}`;
-                try {
-                    const text = await res.text();
-                    try {
-                        const data = JSON.parse(text);
-                        errorMsg = data.details || data.error || text;
-                    } catch {
-                        errorMsg = `HTML Error: ${text.slice(0, 100)}`;
-                    }
-                } catch {
-                    errorMsg = `Server error ${res.status}: ${res.statusText}`;
-                }
-                toast.error(errorMsg);
+                const data = await res.json();
+                toast.error(data.error || "Query failed");
             }
         } catch (error) {
-            const err = error as Error;
-            toast.error(`Network error: ${err.message}`);
+            toast.error("Network error");
         } finally {
             setQuerying(false);
         }
     };
 
-    const handleDelete = async (e: React.MouseEvent, docId: string) => {
+    const handleDeleteDoc = async (e: React.MouseEvent, docId: string) => {
         e.stopPropagation();
-        if (!confirm("Are you sure you want to delete this document?")) return;
-
+        if (!confirm("Are you sure?")) return;
         try {
-            const res = await fetch(`/api/v1-docs/${docId}`, {
-                method: "DELETE",
-            });
-
+            const res = await fetch(`/api/v1-docs/${docId}`, { method: "DELETE" });
             if (res.ok) {
-                toast.success("Document deleted");
-                if (selectedDocId === docId) setSelectedDocId(null);
+                toast.success("Document removed");
                 fetchDocuments();
-            } else {
-                toast.error("Failed to delete document");
+                fetchWorkspaces();
             }
         } catch (error) {
-            toast.error("Network error deleting document");
+            toast.error("Error deleting");
         }
     };
 
-    return (
-        <div className="p-6 space-y-8">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-slate-900">
-                    <Upload className="w-5 h-5 text-indigo-600" />
-                    Upload Document
-                </h2>
-                <div className="flex items-center gap-4">
-                    <input
-                        type="file"
-                        accept=".pdf,.txt"
-                        onChange={(e) => setFile(e.target.files?.[0] || null)}
-                        className="block w-full text-sm text-slate-500
-                            file:mr-4 file:py-2 file:px-4
-                            file:rounded-full file:border-0
-                            file:text-sm file:font-semibold
-                            file:bg-indigo-50 file:text-indigo-700
-                            hover:file:bg-indigo-100 cursor-pointer"
-                    />
-                    <button
-                        onClick={handleUpload}
-                        disabled={!file || uploading}
-                        className="bg-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
-                    >
-                        {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload"}
-                    </button>
-                </div>
-                <p className="mt-2 text-xs text-slate-400">Supported formats: PDF, TXT (Max 10MB)</p>
-            </div>
+    const activeWorkspace = workspaces.find(w => w.id === selectedWorkspaceId);
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {/* Document List */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-1">
-                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900">
-                        <FileText className="w-5 h-5 text-indigo-600" />
-                        My Documents
+    return (
+        <div className="flex flex-col md:flex-row gap-6 p-6 min-h-[calc(100vh-100px)]">
+            {/* Sidebar: Workspace Management */}
+            <div className="w-full md:w-72 flex flex-col gap-6">
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                    <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <FolderOpen className="w-4 h-4" />
+                        Workspaces
                     </h2>
-                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                        {documents.length === 0 ? (
-                            <p className="text-sm text-slate-400 text-center py-4">No documents uploaded yet.</p>
-                        ) : (
-                            documents.map((doc) => (
-                                <div
-                                    key={doc.id}
-                                    onClick={() => setSelectedDocId(doc.id)}
-                                    className={`p-3 rounded-lg cursor-pointer border transition flex items-center justify-between group ${selectedDocId === doc.id
-                                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                        : "bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100"
-                                        }`}
-                                >
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate">{doc.name}</p>
-                                        <p className="text-[10px] opacity-70">
-                                            {new Date(doc.createdAt).toLocaleDateString()}
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={(e) => handleDelete(e, doc.id)}
-                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-                                        title="Remove document"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            ))
-                        )}
+
+                    <div className="space-y-1 mb-6">
+                        {workspaces.map((ws) => (
+                            <button
+                                key={ws.id}
+                                onClick={() => setSelectedWorkspaceId(ws.id)}
+                                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between group ${selectedWorkspaceId === ws.id
+                                        ? "bg-indigo-600 text-white"
+                                        : "text-slate-600 hover:bg-slate-100"
+                                    }`}
+                            >
+                                <span className="truncate">{ws.name}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${selectedWorkspaceId === ws.id ? "bg-indigo-500" : "bg-slate-100"
+                                    }`}>
+                                    {ws._count?.documents || 0}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
+                        <input
+                            type="text"
+                            placeholder="New Workspace..."
+                            value={newWorkspaceName}
+                            onChange={(e) => setNewWorkspaceName(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleCreateWorkspace()}
+                            className="text-xs p-2 rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <button
+                            onClick={handleCreateWorkspace}
+                            disabled={isCreatingWorkspace || !newWorkspaceName.trim()}
+                            className="bg-indigo-50 text-indigo-700 text-xs py-2 rounded font-semibold hover:bg-indigo-100 transition flex items-center justify-center gap-1"
+                        >
+                            {isCreatingWorkspace ? <Loader2 className="w-3 h-3 animate-spin" /> : <FolderPlus className="w-3 h-3" />}
+                            Create Workspace
+                        </button>
                     </div>
                 </div>
 
-                {/* Q&A Interface */}
-                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:col-span-2">
-                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-900">
-                        <Send className="w-5 h-5 text-indigo-600" />
-                        Ask Your Document
-                    </h2>
+                {/* Quick Stats or Tips */}
+                <div className="bg-indigo-600 rounded-xl p-5 text-white shadow-lg shadow-indigo-100">
+                    <h3 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-80">Pro Tip</h3>
+                    <p className="text-sm leading-relaxed">
+                        Query multiple documents at once by selecting a workspace. The AI will cite which file the info came from!
+                    </p>
+                </div>
+            </div>
 
-                    <div className="space-y-4">
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                placeholder={selectedDocId ? "Ask a question about the selected document..." : "Select or upload a document first"}
-                                value={question}
-                                onChange={(e) => setQuestion(e.target.value)}
-                                disabled={!selectedDocId || querying}
-                                className="flex-1 p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-50 text-slate-900"
-                                onKeyDown={(e) => e.key === "Enter" && handleQuery()}
-                            />
-                            <button
-                                onClick={handleQuery}
-                                disabled={!selectedDocId || !question.trim() || querying}
-                                className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition"
-                            >
-                                {querying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ask"}
-                            </button>
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col gap-6">
+                {/* Upload Section */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-xl font-semibold flex items-center gap-2 text-slate-900">
+                            <Upload className="w-5 h-5 text-indigo-600" />
+                            {activeWorkspace ? `Add to ${activeWorkspace.name}` : "Upload Document"}
+                        </h2>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                        <input
+                            type="file"
+                            accept=".pdf,.txt"
+                            onChange={(e) => setFile(e.target.files?.[0] || null)}
+                            className="block w-full text-sm text-slate-500
+                                file:mr-4 file:py-2 file:px-4
+                                file:rounded-lg file:border-0
+                                file:text-sm file:font-semibold
+                                file:bg-indigo-50 file:text-indigo-700
+                                hover:file:bg-indigo-100 cursor-pointer"
+                        />
+                        <button
+                            onClick={handleUpload}
+                            disabled={!file || !selectedWorkspaceId || uploading}
+                            className="w-full sm:w-auto bg-indigo-600 text-white px-8 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+                        >
+                            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload"}
+                        </button>
+                    </div>
+                    {!selectedWorkspaceId && (
+                        <p className="mt-2 text-xs text-amber-600 font-medium">Please select a workspace first</p>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+                    {/* Document List (In active workspace) */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col xl:col-span-2 overflow-hidden">
+                        <div className="p-5 border-b border-slate-100">
+                            <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-900">
+                                <FileText className="w-5 h-5 text-indigo-600" />
+                                Documents
+                            </h2>
+                        </div>
+                        <div className="p-2 flex-1 max-h-[500px] overflow-y-auto space-y-1">
+                            {documents.length === 0 ? (
+                                <div className="text-center py-12 text-slate-400">
+                                    <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                                    <p className="text-sm">No documents in this workspace</p>
+                                </div>
+                            ) : (
+                                documents.map((doc) => (
+                                    <div
+                                        key={doc.id}
+                                        className="group p-3 rounded-lg border border-transparent hover:border-slate-100 hover:bg-slate-50 transition flex items-center justify-between"
+                                    >
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-slate-700 truncate">{doc.name}</p>
+                                            <p className="text-[10px] text-slate-400">
+                                                {new Date(doc.createdAt).toLocaleDateString()}
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={(e) => handleDeleteDoc(e, doc.id)}
+                                            className="p-1.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-md transition-all opacity-0 group-hover:opacity-100"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Q&A Interface */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col xl:col-span-3">
+                        <div className="p-5 border-b border-slate-100">
+                            <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-900">
+                                <Send className="w-5 h-5 text-indigo-600" />
+                                Workspace Intelligence
+                            </h2>
                         </div>
 
-                        {answer && (
-                            <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Answer</p>
-                                <p className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap font-medium">{answer}</p>
+                        <div className="p-6 flex flex-col gap-6 flex-1">
+                            <div className="relative">
+                                <input
+                                    type="text"
+                                    placeholder={selectedWorkspaceId ? "Ask a question across all documents..." : "Select a workspace to begin"}
+                                    value={question}
+                                    onChange={(e) => setQuestion(e.target.value)}
+                                    disabled={!selectedWorkspaceId || querying}
+                                    onKeyDown={(e) => e.key === "Enter" && handleQuery()}
+                                    className="w-full pl-4 pr-24 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50/50 text-slate-900 font-medium placeholder:text-slate-400 transition-all"
+                                />
+                                <button
+                                    onClick={handleQuery}
+                                    disabled={!selectedWorkspaceId || !question.trim() || querying}
+                                    className="absolute right-2 top-2 bg-indigo-600 text-white px-5 py-1.5 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50 transition flex items-center gap-2"
+                                >
+                                    {querying ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ask"}
+                                </button>
                             </div>
-                        )}
+
+                            <div className="flex-1 min-h-[300px] flex flex-col">
+                                {answer ? (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                        <div className="p-5 bg-indigo-50/30 rounded-2xl border border-indigo-100">
+                                            <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-3">AI Intelligence Answer</p>
+                                            <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap font-medium">
+                                                {answer}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex flex-col items-center justify-center text-slate-300 text-center px-8">
+                                        <Loader2 className={`w-10 h-10 mb-4 opacity-10 ${querying ? "animate-spin opacity-100 text-indigo-600" : ""}`} />
+                                        <p className="text-sm font-medium">
+                                            {querying ? "Synthesizing information from multiple sources..." : "Your answer will appear here with source citations."}
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

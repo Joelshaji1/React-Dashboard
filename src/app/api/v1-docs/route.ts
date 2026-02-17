@@ -17,15 +17,22 @@ if (typeof globalThis.DOMMatrix === "undefined") {
     };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { searchParams } = new URL(req.url);
+        const workspaceId = searchParams.get("workspaceId");
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const docs = await (prisma as any).document.findMany({
-            where: { userId: session.user.id },
+            where: {
+                userId: session.user.id,
+                ...(workspaceId ? { workspaceId } : {})
+            },
             orderBy: { createdAt: "desc" },
-            select: { id: true, name: true, createdAt: true }
+            select: { id: true, name: true, createdAt: true, workspaceId: true }
         });
         return NextResponse.json(docs);
     } catch (e) {
@@ -93,9 +100,16 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Empty content - check file format" }, { status: 400 });
         }
 
+        const workspaceId = formData.get("workspaceId") as string;
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const doc = await (prisma as any).document.create({
-            data: { name: file.name, content, userId: session.user.id }
+            data: {
+                name: file.name,
+                content,
+                userId: session.user.id,
+                ...(workspaceId ? { workspaceId } : {})
+            }
         });
 
         return NextResponse.json({ message: "Success", documentId: doc.id });

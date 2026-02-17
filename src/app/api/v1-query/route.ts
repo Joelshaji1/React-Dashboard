@@ -29,26 +29,47 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const { documentId, question } = await req.json();
+        const { documentId, workspaceId, question } = await req.json();
 
-        if (!documentId || !question) {
-            return NextResponse.json({ error: "Missing document ID or question" }, { status: 400 });
+        if (!question || (!documentId && !workspaceId)) {
+            return NextResponse.json({ error: "Missing document/workspace ID or question" }, { status: 400 });
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const document = await (prisma as any).document.findUnique({
-            where: { id: documentId },
-        });
+        let context = "";
+        let sourceNames = "";
 
-        if (!document) {
-            return NextResponse.json({ error: "Document not found" }, { status: 404 });
+        if (workspaceId) {
+            // Multi-document query
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const docs = await (prisma as any).document.findMany({
+                where: { workspaceId, userId: session.user.id }
+            });
+
+            if (docs.length === 0) {
+                return NextResponse.json({ error: "No documents found in this workspace" }, { status: 404 });
+            }
+
+            // Combine contents with document delimiters for citation context
+            context = docs.map((d: any) => `DOCUMENT: ${d.name}\nCONTENT:\n${d.content}`).join("\n\n---\n\n");
+            sourceNames = docs.map((d: any) => d.name).join(", ");
+        } else {
+            // Single document query (legacy support)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const document = await (prisma as any).document.findUnique({
+                where: { id: documentId },
+            });
+
+            if (!document || document.userId !== session.user.id) {
+                return NextResponse.json({ error: "Document not found or forbidden" }, { status: 404 });
+            }
+
+            context = `DOCUMENT: ${document.name}\nCONTENT:\n${document.content}`;
+            sourceNames = document.name;
         }
 
-        if (document.userId !== session.user.id) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+        // Truncate context to fit within model limits (approx 20k chars as safety)
+        const truncatedContext = context.substring(0, 20000);
 
-        const context = document.content.substring(0, 15000);
         const models = [
             "liquid/lfm-2.5-1.2b-thinking:free",
             "meta-llama/llama-3.2-3b-instruct:free",
@@ -65,11 +86,14 @@ export async function POST(req: NextRequest) {
                     messages: [
                         {
                             role: "system",
-                            content: "Answer the question based ONLY on the provided document. If unsure, say you don't know."
+                            content: `Answer the question based ONLY on the provided documents. 
+                            If you find information, ALWAYS cite which document it came from using [Source: filename.pdf].
+                            If you cannot find the answer, say you don't know based on the provided files.
+                            Documents Available: ${sourceNames}`
                         },
                         {
                             role: "user",
-                            content: `Document:\n${context}\n\nQuestion: ${question}`
+                            content: `Context:\n${truncatedContext}\n\nQuestion: ${question}`
                         }
                     ],
                 });
@@ -77,7 +101,8 @@ export async function POST(req: NextRequest) {
                 if (response.choices?.[0]?.message?.content) {
                     return NextResponse.json({
                         answer: response.choices[0].message.content,
-                        model_used: model
+                        model_used: model,
+                        sources: sourceNames
                     });
                 }
             } catch (e: any) {
