@@ -189,8 +189,8 @@ export default function DocumentQA() {
                                 key={ws.id}
                                 onClick={() => setSelectedWorkspaceId(ws.id)}
                                 className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-between group ${selectedWorkspaceId === ws.id
-                                        ? "bg-indigo-600 text-white"
-                                        : "text-slate-600 hover:bg-slate-100"
+                                    ? "bg-indigo-600 text-white"
+                                    : "text-slate-700 hover:bg-slate-100"
                                     }`}
                             >
                                 <span className="truncate">{ws.name}</span>
@@ -209,7 +209,7 @@ export default function DocumentQA() {
                             value={newWorkspaceName}
                             onChange={(e) => setNewWorkspaceName(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleCreateWorkspace()}
-                            className="text-xs p-2 rounded border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="text-xs p-2 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-900 bg-white placeholder:text-slate-400"
                         />
                         <button
                             onClick={handleCreateWorkspace}
@@ -225,7 +225,7 @@ export default function DocumentQA() {
                 {/* Quick Stats or Tips */}
                 <div className="bg-indigo-600 rounded-xl p-5 text-white shadow-lg shadow-indigo-100">
                     <h3 className="text-xs font-bold uppercase tracking-wider mb-2 opacity-80">Pro Tip</h3>
-                    <p className="text-sm leading-relaxed">
+                    <p className="text-sm leading-relaxed text-indigo-50">
                         Query multiple documents at once by selecting a workspace. The AI will cite which file the info came from!
                     </p>
                 </div>
@@ -280,7 +280,7 @@ export default function DocumentQA() {
                             {documents.length === 0 ? (
                                 <div className="text-center py-12 text-slate-400">
                                     <FileText className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                    <p className="text-sm">No documents in this workspace</p>
+                                    <p className="text-sm text-slate-500 font-medium">No documents in this workspace</p>
                                 </div>
                             ) : (
                                 documents.map((doc) => (
