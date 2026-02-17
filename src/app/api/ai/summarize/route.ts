@@ -66,9 +66,16 @@ async function fetchWithFailover(videoId: string) {
                 return finalTranscript.substring(0, 25000);
             }
 
-            console.warn("Supadata API returned no valid content:", JSON.stringify(data));
+            const errorMsg = `Supadata ${response.status}: ${data.error || "No valid content"}`;
+            console.warn("Method 0 (Supadata) returned no valid content:", errorMsg);
+
+            // Attach diagnostics to the error if it fails later
+            const diagError = new Error(errorMsg);
+            (diagError as any).diagnostics = JSON.stringify(data);
+            lastError = diagError;
         } catch (e: any) {
             console.warn("Method 0 (Supadata) critical failure:", e.message);
+            lastError = e;
         }
     } else {
         console.log("Method 0 skipped: NO_API_KEY. Ensure SCRAPER_API_KEY is set in Vercel.");
@@ -187,6 +194,8 @@ export async function POST(req: Request) {
                 return NextResponse.json(
                     {
                         error: `YouTube IP Block: ${error.message}`,
+                        diagnostics: (error as any).diagnostics || "No extra info provided.",
+                        keyCheck: process.env.SCRAPER_API_KEY ? "Present (Starts with: " + process.env.SCRAPER_API_KEY.substring(0, 4) + ")" : "MISSING in Environment",
                         isIPBlock: true,
                         videoId: videoId
                     },

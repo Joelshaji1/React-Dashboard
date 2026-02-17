@@ -39,7 +39,12 @@ export default function YouTubeSummarizer() {
             if (!res.ok) {
                 // If it's a 403 IP block, even our server failovers failed
                 if (res.status === 403) {
-                    throw new Error("YouTube is strictly blocking this video. Please use Manual Assist.");
+                    let msg = "YouTube is strictly blocking this video.";
+                    if (data.keyCheck) msg += `\n[Key Check: ${data.keyCheck}]`;
+                    if (data.diagnostics && data.diagnostics !== "No extra info provided.") {
+                        msg += `\n[Suppadata Error: ${data.diagnostics}]`;
+                    }
+                    throw new Error(msg);
                 }
                 throw new Error(data.error || "Failed to summarize video");
             }
