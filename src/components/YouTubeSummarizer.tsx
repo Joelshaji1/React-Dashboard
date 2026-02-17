@@ -39,15 +39,7 @@ export default function YouTubeSummarizer() {
             if (!res.ok) {
                 // If it's a 403 IP block, even our server failovers failed
                 if (res.status === 403) {
-                    let msg = "YouTube is strictly blocking this video.";
-                    if (data.keyCheck) msg += `\n[Key Check: ${data.keyCheck}]`;
-                    if (data.diagnostics && data.diagnostics !== "No extra info provided.") {
-                        msg += `\n[Supadata Error: ${data.diagnostics}]`;
-                    }
-                    if (data.methodLog && data.methodLog.length > 0) {
-                        msg += `\n\n[Transcription Audit]:\n` + data.methodLog.join("\n");
-                    }
-                    throw new Error(msg);
+                    throw new Error("YouTube is strictly blocking this video for automated tools. Please use Manual Assist below.");
                 }
                 throw new Error(data.error || "Failed to summarize video");
             }

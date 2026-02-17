@@ -203,10 +203,7 @@ export async function POST(req: Request) {
                 console.error("Transcript failure on server:", error.message);
                 return NextResponse.json(
                     {
-                        error: `YouTube IP Block: ${error.message}`,
-                        diagnostics: (error as any).diagnostics || "No extra info provided.",
-                        methodLog: (error as any).methodLog || [],
-                        keyCheck: process.env.SCRAPER_API_KEY ? "Present (Starts with: " + process.env.SCRAPER_API_KEY.substring(0, 4) + ")" : "MISSING in Environment",
+                        error: `Transcription Error: ${error.message}`,
                         isIPBlock: true,
                         videoId: videoId
                     },
