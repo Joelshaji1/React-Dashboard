@@ -67,8 +67,9 @@ export async function POST(req: NextRequest) {
             sourceNames = document.name;
         }
 
-        // Truncate context to fit within model limits (approx 20k chars as safety)
-        const truncatedContext = context.substring(0, 20000);
+        // Truncate context to fit within model limits (approx 80k chars)
+        const truncatedContext = context.substring(0, 80000);
+        console.log(`[v1-query] Context size: ${context.length}, Truncated to: ${truncatedContext.length}`);
 
         const models = [
             "liquid/lfm-2.5-1.2b-thinking:free",
@@ -86,9 +87,11 @@ export async function POST(req: NextRequest) {
                     messages: [
                         {
                             role: "system",
-                            content: `Answer the question based ONLY on the provided documents. 
-                            If you find information, ALWAYS cite which document it came from using [Source: filename.pdf].
-                            If you cannot find the answer, say you don't know based on the provided files.
+                            content: `You are a Workspace Intelligence AI. Your goal is to analyze a COLLECTION of documents.
+                            - ALWAYS synthesize information across ALL provided documents.
+                            - If a question refers to multiple parts (like "all units"), scan all documents for relevant sections.
+                            - ALWAYS cite which document it came from using [Source: filename.pdf].
+                            - If documents conflict, mention the discrepancy.
                             Documents Available: ${sourceNames}`
                         },
                         {

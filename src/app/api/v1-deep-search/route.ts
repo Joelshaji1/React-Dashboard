@@ -73,15 +73,16 @@ export async function POST(req: NextRequest) {
 
         // 3. AI Synthesis (with Robust Retries)
         console.log("[Deep Search] Initializing AI synthesis...");
+        // Prioritize docs by putting them first and using a large buffer
         const combinedContext = `
-DOCUMENTS CONTEXT:
+DOCUMENTS CONTEXT (SEARCH THESE FIRST):
 ${docContext}
 
 ---\n
 
-WEB RESEARCH CONTEXT:
+WEB RESEARCH CONTEXT (SUPPLEMENTAL):
 ${webContext}
-        `.substring(0, 25000); // Safety limit
+        `.substring(0, 80000);
 
         const models = [
             "liquid/lfm-2.5-1.2b-thinking:free",
@@ -100,10 +101,12 @@ ${webContext}
                     messages: [
                         {
                             role: "system",
-                            content: `You are a Deep Search AI. Use BOTH the uploaded documents and the web research provided to answer.
+                            content: `You are a Deep Search Intelligence AI. Your goal is to analyze a COLLECTION of uploaded documents AND web research.
+                            - ALWAYS synthesize information across ALL provided documents.
+                            - If a question refers to multiple parts (like "all units"), scan all documents for relevant sections.
                             - If info comes from a document, cite [Document: filename.pdf].
                             - If info comes from the web, cite [Web: website.com].
-                            - If documents and web conflict, prioritize documents but mention the conflict.
+                            - Prioritize document information over web research unless web info is significantly more recent.
                             Documents Available: ${docNames || "None uploaded yet"}`
                         },
                         {
