@@ -50,27 +50,28 @@ async function fetchWithFailover(videoId: string) {
     if (apiKey) {
         try {
             console.log("Method 0: Attempting Supadata Master API for", videoId);
-            const response = await fetch(`https://api.supadata.ai/v1/transcript?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, {
+            const apiUrl = `https://api.supadata.ai/v1/youtube/transcript?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&mode=auto`;
+            const response = await fetch(apiUrl, {
                 headers: { "x-api-key": apiKey },
                 cache: 'no-store'
             });
+
+            console.log(`Supadata Status: ${response.status} ${response.statusText}`);
             const data = await response.json();
 
-            // Support both "content" string and "transcript" array formats
-            if (data.content) {
-                console.log("Method 0: Success via Supadata (string content)");
-                return data.content.substring(0, 25000);
-            } else if (Array.isArray(data.transcript)) {
-                console.log("Method 0: Success via Supadata (array format)");
-                return data.transcript.map((t: any) => t.text).join(" ").substring(0, 25000);
+            const finalTranscript = data.content || data.text || (Array.isArray(data.transcript) ? data.transcript.map((t: any) => t.text).join(" ") : null);
+
+            if (finalTranscript && finalTranscript.trim().length > 100) {
+                console.log("Method 0: Success via Supadata! Length:", finalTranscript.length);
+                return finalTranscript.substring(0, 25000);
             }
 
-            console.warn("Supadata API response structure unknown or empty:", JSON.stringify(data));
+            console.warn("Supadata API returned no valid content:", JSON.stringify(data));
         } catch (e: any) {
             console.warn("Method 0 (Supadata) critical failure:", e.message);
         }
     } else {
-        console.log("Method 0 skipped: No SCRAPER_API_KEY found in environment.");
+        console.log("Method 0 skipped: NO_API_KEY. Ensure SCRAPER_API_KEY is set in Vercel.");
     }
 
     // Method 1: youtube-transcript (Standard) - FAST
