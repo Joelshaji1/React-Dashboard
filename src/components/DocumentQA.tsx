@@ -360,7 +360,7 @@ export default function DocumentQA() {
                                 </button>
                             </div>
 
-                            <div className="flex-1 min-h-[300px] flex flex-col">
+                            <div className="flex-1 min-h-[300px] max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                                 {answer ? (
                                     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
                                         <div className="p-5 bg-indigo-50/30 rounded-2xl border border-indigo-100">
@@ -371,7 +371,7 @@ export default function DocumentQA() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="flex-1 flex flex-col items-center justify-center text-slate-300 text-center px-8">
+                                    <div className="flex-1 flex flex-col items-center justify-center text-slate-300 text-center px-8 min-h-[300px]">
                                         <Loader2 className={`w-10 h-10 mb-4 opacity-10 ${querying ? "animate-spin opacity-100 text-indigo-600" : ""}`} />
                                         <p className="text-sm font-medium">
                                             {querying ? "Synthesizing information from multiple sources..." : "Your answer will appear here with source citations."}
