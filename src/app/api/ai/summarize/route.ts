@@ -60,14 +60,15 @@ async function fetchWithFailover(videoId: string) {
             console.log(`Supadata Status: ${response.status} ${response.statusText}`);
             const data = await response.json();
 
-            const finalTranscript = data.content || data.text || (Array.isArray(data.transcript) ? data.transcript.map((t: any) => t.text).join(" ") : null);
+            let finalTranscript = data.content || data.text || (Array.isArray(data.transcript) ? data.transcript.map((t: any) => t.text).join(" ") : null);
 
-            if (finalTranscript && finalTranscript.trim().length > 100) {
+            // Robust type check: Ensure finalTranscript is a string before trimming
+            if (finalTranscript && typeof finalTranscript === "string" && finalTranscript.trim().length > 100) {
                 console.log("Method 0: Success via Supadata! Length:", finalTranscript.length);
                 return finalTranscript.substring(0, 25000);
             }
 
-            const errorMsg = `Supadata ${response.status}: ${data.error || "No valid content"}`;
+            const errorMsg = `Supadata ${response.status}: ${data.error || "No valid string content found"}`;
             console.warn("Method 0 (Supadata) failed:", errorMsg);
 
             // IMMEDIATELY throw if we have diagnostics to stop backups from hiding the real issue
@@ -78,8 +79,8 @@ async function fetchWithFailover(videoId: string) {
             const msg = `Method 0 (Supadata) error: ${e.message}`;
             console.warn(msg);
             methodLog.push(msg);
-            // If it's a diagnostic error we just created, rethrow it
-            if (e.diagnostics) {
+            // If it's a diagnostic error we just created (or if it has diagnostics), rethrow it
+            if (e.diagnostics || e.message.includes("Supadata")) {
                 (e as any).methodLog = methodLog;
                 throw e;
             }
