@@ -67,14 +67,15 @@ async function fetchWithFailover(videoId: string) {
             }
 
             const errorMsg = `Supadata ${response.status}: ${data.error || "No valid content"}`;
-            console.warn("Method 0 (Supadata) returned no valid content:", errorMsg);
+            console.warn("Method 0 (Supadata) failed:", errorMsg);
 
-            // Attach diagnostics to the error if it fails later
+            // IMMEDIATELY throw if we have diagnostics to stop backups from hiding the real issue
             const diagError = new Error(errorMsg);
             (diagError as any).diagnostics = JSON.stringify(data);
-            lastError = diagError;
+            throw diagError;
         } catch (e: any) {
-            console.warn("Method 0 (Supadata) critical failure:", e.message);
+            console.warn("Method 0 (Supadata) failure block:", e.message);
+            if (e.diagnostics) throw e; // Bubble up diagnostic errors immediately
             lastError = e;
         }
     } else {
@@ -152,9 +153,6 @@ async function fetchWithFailover(videoId: string) {
         console.warn("Method 4 failed:", e.message);
     }
 
-    if (lastError && (lastError as any).diagnostics) {
-        throw lastError;
-    }
     throw lastError || new Error("Failed to fetch transcript from all server-side methods.");
 }
 
