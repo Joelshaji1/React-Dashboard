@@ -46,21 +46,31 @@ async function fetchWithFailover(videoId: string) {
     let lastError: any = null;
 
     // Method 0: Supadata Professional API (The "Master" Method - 100% Reliable)
-    if (process.env.SCRAPER_API_KEY) {
+    const apiKey = process.env.SCRAPER_API_KEY || process.env.SUPADATA_API_KEY;
+    if (apiKey) {
         try {
-            console.log("Method 0: Attempting Supadata Master API...");
+            console.log("Method 0: Attempting Supadata Master API for", videoId);
             const response = await fetch(`https://api.supadata.ai/v1/transcript?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`, {
-                headers: { "x-api-key": process.env.SCRAPER_API_KEY }
+                headers: { "x-api-key": apiKey },
+                cache: 'no-store'
             });
             const data = await response.json();
+
+            // Support both "content" string and "transcript" array formats
             if (data.content) {
-                console.log("Method 0: Success via Supadata!");
+                console.log("Method 0: Success via Supadata (string content)");
                 return data.content.substring(0, 25000);
+            } else if (Array.isArray(data.transcript)) {
+                console.log("Method 0: Success via Supadata (array format)");
+                return data.transcript.map((t: any) => t.text).join(" ").substring(0, 25000);
             }
-            if (data.error) console.warn("Supadata API returned error:", data.error);
+
+            console.warn("Supadata API response structure unknown or empty:", JSON.stringify(data));
         } catch (e: any) {
-            console.warn("Method 0 (Supadata) failed:", e.message);
+            console.warn("Method 0 (Supadata) critical failure:", e.message);
         }
+    } else {
+        console.log("Method 0 skipped: No SCRAPER_API_KEY found in environment.");
     }
 
     // Method 1: youtube-transcript (Standard) - FAST
