@@ -6,7 +6,7 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
-    baseURL: process.env.OPENROUTER_BASE_URL,
+    baseURL: process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
 });
 
 export const dynamic = "force-dynamic";
@@ -52,7 +52,6 @@ export async function POST(req: NextRequest) {
             } else {
                 const errorText = await firecrawlRes.text();
                 console.error("[Deep Search] Firecrawl API Error:", firecrawlRes.status, errorText);
-                // We keep going as we might have valid local docs
             }
         } catch (err) {
             console.error("[Deep Search] Firecrawl Fetch exception:", err);
@@ -72,7 +71,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "No context found (docs or web) to answer this question" }, { status: 404 });
         }
 
-        // 3. AI Synthesis
+        // 3. AI Synthesis (with Robust Retries)
         console.log("[Deep Search] Initializing AI synthesis...");
         const combinedContext = `
 DOCUMENTS CONTEXT:
@@ -84,30 +83,52 @@ WEB RESEARCH CONTEXT:
 ${webContext}
         `.substring(0, 25000); // Safety limit
 
-        const response = await openai.chat.completions.create({
-            model: "openrouter/auto",
-            messages: [
-                {
-                    role: "system",
-                    content: `You are a Deep Search AI. Use BOTH the uploaded documents and the web research provided to answer.
-                    - If info comes from a document, cite [Document: filename.pdf].
-                    - If info comes from the web, cite [Web: website.com].
-                    - If documents and web conflict, prioritize documents but mention the conflict.
-                    Documents Available: ${docNames || "None uploaded yet"}`
-                },
-                {
-                    role: "user",
-                    content: `Question: ${question}\n\nContext:\n${combinedContext}`
+        const models = [
+            "liquid/lfm-2.5-1.2b-thinking:free",
+            "meta-llama/llama-3.2-3b-instruct:free",
+            "google/gemma-2-9b-it:free",
+            "mistralai/mistral-7b-instruct:free",
+            "openrouter/auto"
+        ];
+
+        let lastError: any = null;
+        for (const model of models) {
+            try {
+                console.log(`[Deep Search] Attempting model: ${model}`);
+                const response = await openai.chat.completions.create({
+                    model: model,
+                    messages: [
+                        {
+                            role: "system",
+                            content: `You are a Deep Search AI. Use BOTH the uploaded documents and the web research provided to answer.
+                            - If info comes from a document, cite [Document: filename.pdf].
+                            - If info comes from the web, cite [Web: website.com].
+                            - If documents and web conflict, prioritize documents but mention the conflict.
+                            Documents Available: ${docNames || "None uploaded yet"}`
+                        },
+                        {
+                            role: "user",
+                            content: `Question: ${question}\n\nContext:\n${combinedContext}`
+                        }
+                    ],
+                });
+
+                if (response.choices?.[0]?.message?.content) {
+                    console.log("[Deep Search] AI synthesis complete using:", model);
+                    return NextResponse.json({
+                        answer: response.choices[0].message.content,
+                        hasWebResults: webContext.length > 0,
+                        model_used: model
+                    });
                 }
-            ],
-        });
+            } catch (e: any) {
+                lastError = e;
+                console.warn(`[Deep Search] Model ${model} failed:`, e.message);
+                continue;
+            }
+        }
 
-        console.log("[Deep Search] AI synthesis complete.");
-
-        return NextResponse.json({
-            answer: response.choices[0].message.content,
-            hasWebResults: webContext.length > 0
-        });
+        throw new Error(lastError?.message || "All AI models failed to respond");
 
     } catch (e: any) {
         console.error("[Deep Search] Fatal Top-Level Error:", e);
