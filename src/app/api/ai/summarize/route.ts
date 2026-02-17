@@ -158,24 +158,6 @@ async function fetchWithFailover(videoId: string) {
         }
     }
 
-    // Method 4: Python YouTubeTranscriptApi (The "Guaranteed" Fix)
-    // This is much more resilient than Node libraries
-    try {
-        console.log("Method 4: Attempting Python youtube-transcript-api...");
-        const scriptPath = path.join(process.cwd(), "get_transcript.py");
-        const { stdout } = await execAsync(`python "${scriptPath}" ${videoId}`);
-        const result = JSON.parse(stdout);
-        if (result.transcript) {
-            return result.transcript.substring(0, 25000);
-        }
-        if (result.error) throw new Error(result.error);
-    } catch (e: any) {
-        lastError = e;
-        const msg = `Method 4 (Giga) error: ${e.message}`;
-        console.warn(msg);
-        methodLog.push(msg);
-    }
-
     if (lastError) {
         (lastError as any).methodLog = methodLog;
     }
